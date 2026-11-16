@@ -10,12 +10,20 @@ use vlogin_core::cookies::{
     parse_set_cookies, to_netscape,
 };
 
+/// A fixed anchor for the relative `Max-Age` attribute, so these tests assert a
+/// number instead of "about now". The codec takes the clock as an argument
+/// precisely so a test can do this.
+const NOW_UNIX: i64 = 1_700_000_000;
+
 #[test]
 fn parse_set_cookies_reads_attributes_and_defaults() {
-    let cookies = parse_set_cookies(&[
-        "SESSDATA=abc%2C1; Domain=.bilibili.com; Expires=Wed, 01 Jan 2027 00:00:00 GMT; Path=/; HttpOnly; Secure".to_string(),
-        "sid=plainvalue; Path=/; Max-Age=60".to_string(),
-    ]);
+    let cookies = parse_set_cookies(
+        &[
+            "SESSDATA=abc%2C1; Domain=.bilibili.com; Expires=Wed, 01 Jan 2027 00:00:00 GMT; Path=/; HttpOnly; Secure".to_string(),
+            "sid=plainvalue; Path=/; Max-Age=60".to_string(),
+        ],
+        NOW_UNIX,
+    );
     assert_eq!(cookies.len(), 2);
 
     assert_eq!(cookies[0].name, "SESSDATA");
@@ -30,19 +38,21 @@ fn parse_set_cookies_reads_attributes_and_defaults() {
     assert_eq!(cookies[1].path, "/");
     assert!(!cookies[1].secure);
     assert!(!cookies[1].http_only);
-    // Max-Age is relative to now, so it must land within a second or two.
-    let expected = vlogin_core::cookies::now_unix() + 60;
-    assert!((cookies[1].expires - expected).abs() <= 5, "Max-Age wins over Expires");
+    // Max-Age is relative to the supplied anchor, so this is exact.
+    assert_eq!(cookies[1].expires, NOW_UNIX + 60, "Max-Age wins over Expires");
 }
 
 #[test]
 fn parse_set_cookies_skips_malformed_lines() {
-    let cookies = parse_set_cookies(&[
-        "".to_string(),
-        "=novalue".to_string(),          // empty name
-        "noequalsign".to_string(),       // not a pair at all
-        "ok=1".to_string(),
-    ]);
+    let cookies = parse_set_cookies(
+        &[
+            "".to_string(),
+            "=novalue".to_string(),    // empty name
+            "noequalsign".to_string(), // not a pair at all
+            "ok=1".to_string(),
+        ],
+        NOW_UNIX,
+    );
     assert_eq!(cookies.len(), 1);
     assert_eq!(cookies[0].name, "ok");
 }
@@ -60,10 +70,13 @@ fn parse_http_date_accepts_rfc7231_and_rejects_garbage() {
 
 #[test]
 fn to_netscape_writes_standard_rows_and_keeps_httponly_marker() {
-    let cookies = parse_set_cookies(&[
-        "SESSDATA=abc,1; Domain=.bilibili.com; Path=/; HttpOnly; Secure".to_string(),
-        "bili_jct=tok; Domain=.bilibili.com; Path=/".to_string(),
-    ]);
+    let cookies = parse_set_cookies(
+        &[
+            "SESSDATA=abc,1; Domain=.bilibili.com; Path=/; HttpOnly; Secure".to_string(),
+            "bili_jct=tok; Domain=.bilibili.com; Path=/".to_string(),
+        ],
+        NOW_UNIX,
+    );
     let file = to_netscape(&cookies, "bilibili.com");
 
     let lines: Vec<&str> = file.split('\n').collect();

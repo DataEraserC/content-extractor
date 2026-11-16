@@ -30,11 +30,12 @@ use super::{
     harvest, jar_header, jar_of, merge_jar, require_method, state_str, Challenge, CheckOutcome,
     Poll, Provider,
 };
+use crate::ambient::Ambient;
 use crate::cookies;
 use crate::error::{Error, Result};
 use crate::http;
 use crate::model::{ChannelInfo, MethodInfo, MethodKind};
-use crate::util::{base64_encode, now_ms};
+use crate::util::base64_encode;
 
 const DOMAIN: &str = "v.qq.com";
 /// ptlogin2 app id used by the v.qq.com web login.
@@ -79,7 +80,12 @@ impl Provider for Tencent {
         }
     }
 
-    fn start(&self, method: &str, params: &Value) -> Result<(Challenge, Value)> {
+    fn start(
+        &self,
+        method: &str,
+        params: &Value,
+        ambient: Ambient,
+    ) -> Result<(Challenge, Value)> {
         require_method(&self.info(), method)?;
         let _ = params;
         let mut query = String::new();
@@ -90,7 +96,7 @@ impl Provider for Tencent {
             ("s", "3"),
             ("d", "72"),
             ("v", "4"),
-            ("t", &format!("0.{}", now_ms() % 1000000)),
+            ("t", &format!("0.{}", ambient.now_ms() % 1000000)),
             ("daid", DA_ID),
             ("pt_3rd_aid", "0"),
         ] {
@@ -109,7 +115,7 @@ impl Provider for Tencent {
         }
 
         // qrsig is the whole basis of the poll token, so it has to be kept.
-        let mut jar = harvest(&response.set_cookies, DOMAIN)?;
+        let mut jar = harvest(&response.set_cookies, DOMAIN, ambient)?;
         let Some(qrsig) = response
             .set_cookies
             .iter()
@@ -138,14 +144,14 @@ impl Provider for Tencent {
         ))
     }
 
-    fn poll(&self, session: &mut crate::session::Session) -> Result<Poll> {
+    fn poll(&self, session: &mut crate::session::Session, ambient: Ambient) -> Result<Poll> {
         let qrsig = state_str(session, "qrsig");
         let token = state_str(session, "token");
         if qrsig.is_empty() || token.is_empty() {
             return Err(Error::channel("this session has no QQ qr login token"));
         }
         let mut query = String::new();
-        let timestamp = now_ms().to_string();
+        let timestamp = ambient.now_ms().to_string();
         for (key, value) in [
             ("u1", "https://v.qq.com/"),
             ("ptqrtoken", &token),
@@ -188,7 +194,7 @@ impl Provider for Tencent {
 
         match state {
             "0" => {
-                let mut cookies = harvest(&response.set_cookies, DOMAIN).unwrap_or_default();
+                let mut cookies = harvest(&response.set_cookies, DOMAIN, ambient).unwrap_or_default();
                 let redirect = args.get(1).cloned().unwrap_or_default();
                 if cookies.is_empty() && !redirect.is_empty() {
                     let hop_cookie = jar_header(session);
@@ -198,7 +204,7 @@ impl Provider for Tencent {
                         vec![("referer", "https://v.qq.com/"), ("cookie", hop_cookie.as_str())]
                     };
                     if let Ok(hop_response) = http::get(&redirect, &hop_headers) {
-                        cookies = harvest(&hop_response.set_cookies, DOMAIN).unwrap_or_default();
+                        cookies = harvest(&hop_response.set_cookies, DOMAIN, ambient).unwrap_or_default();
                     }
                 }
                 if cookies.is_empty() {

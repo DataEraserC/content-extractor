@@ -10,5 +10,9 @@ name = "vlogin"
 path = "src/main.rs"
 
 [dependencies]
+# The CLI is a second host of the same effects: state root resolution, the
+# clock, the filesystem and the browser launcher all live in `vlogin-abi`, and
+# re-implementing them here would defeat the split the core is built around.
+vlogin-abi = { path = "../vlogin-abi" }
 vlogin-core = { path = "../vlogin-core" }
 serde_json = "1"

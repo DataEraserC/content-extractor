@@ -18,6 +18,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use super::{require_method, Challenge, CheckOutcome, Provider};
+use crate::ambient::Ambient;
 use crate::cookies;
 use crate::error::{Error, Result};
 use crate::model::{ChannelInfo, MethodInfo, MethodKind};
@@ -61,9 +62,14 @@ impl Provider for Youku {
         }
     }
 
-    fn start(&self, method: &str, params: &Value) -> Result<(Challenge, Value)> {
+    fn start(
+        &self,
+        method: &str,
+        params: &Value,
+        ambient: Ambient,
+    ) -> Result<(Challenge, Value)> {
         require_method(&self.info(), method)?;
-        let _ = params;
+        let _ = (params, ambient);
         Err(Error::channel(
             "youku has no stable headless QR login endpoint (it runs through "
                 .to_string()

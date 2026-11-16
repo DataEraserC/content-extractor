@@ -26,11 +26,12 @@ use super::{
     harvest, jar_of, merge_jar, require_method, state_str, Challenge, CheckOutcome, Poll,
     Provider,
 };
+use crate::ambient::Ambient;
 use crate::cookies;
 use crate::error::{Error, Result};
 use crate::http;
 use crate::model::{ChannelInfo, MethodInfo, MethodKind};
-use crate::util::{base64_encode, random_token};
+use crate::util::base64_encode;
 
 const DOMAIN: &str = "iqiyi.com";
 const GEN_TOKEN_URL: &str = "https://passport.iqiyi.com/apis/qrcode/gen_login_token.action";
@@ -74,10 +75,15 @@ impl Provider for IQiyi {
         }
     }
 
-    fn start(&self, method: &str, params: &Value) -> Result<(Challenge, Value)> {
+    fn start(
+        &self,
+        method: &str,
+        params: &Value,
+        ambient: Ambient,
+    ) -> Result<(Challenge, Value)> {
         require_method(&self.info(), method)?;
         let _ = params;
-        let device_id = random_token(32);
+        let device_id = ambient.token(32);
         let response = http::post_form(
             GEN_TOKEN_URL,
             &[("accept", "application/json"), ("referer", "https://www.iqiyi.com/")],
@@ -130,7 +136,7 @@ impl Provider for IQiyi {
             return Err(Error::http("iqiyi QR image was not a PNG"));
         }
 
-        let jar = harvest(&response.set_cookies, DOMAIN).unwrap_or_default();
+        let jar = harvest(&response.set_cookies, DOMAIN, ambient).unwrap_or_default();
 
         Ok((
             Challenge::Qr {
@@ -141,7 +147,7 @@ impl Provider for IQiyi {
         ))
     }
 
-    fn poll(&self, session: &mut crate::session::Session) -> Result<Poll> {
+    fn poll(&self, session: &mut crate::session::Session, ambient: Ambient) -> Result<Poll> {
         let token = state_str(session, "token");
         if token.is_empty() {
             return Err(Error::channel("this session has no iqiyi login token"));
@@ -169,7 +175,7 @@ impl Provider for IQiyi {
             // anything else is a hard error.
             return Ok(Poll::Pending { message: "等待扫码确认".into() });
         }
-        let cookies = harvest(&response.set_cookies, DOMAIN)?;
+        let cookies = harvest(&response.set_cookies, DOMAIN, ambient)?;
         merge_jar(session, &cookies);
         Ok(Poll::Done { cookies: jar_of(session), identity: String::new() })
     }

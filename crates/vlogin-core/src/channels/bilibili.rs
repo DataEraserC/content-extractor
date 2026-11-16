@@ -30,6 +30,7 @@ use super::{
     code_of, data_of, harvest, jar_header, jar_of, merge_jar, message_of, require_method,
     state_set, state_str, str_param, Challenge, CheckOutcome, Poll, Provider,
 };
+use crate::ambient::Ambient;
 use crate::cookies;
 use crate::error::{Error, Result};
 use crate::http;
@@ -99,7 +100,12 @@ impl Provider for Bilibili {
         }
     }
 
-    fn start(&self, method: &str, params: &Value) -> Result<(Challenge, Value)> {
+    fn start(
+        &self,
+        method: &str,
+        params: &Value,
+        ambient: Ambient,
+    ) -> Result<(Challenge, Value)> {
         require_method(&self.info(), method)?;
         match method {
             "qr" => {
@@ -123,7 +129,7 @@ impl Provider for Bilibili {
                     .to_string();
                 // The generate call is where buvid3/b_lsid are issued; they
                 // have to ride along with every later poll.
-                let jar = harvest(&response.set_cookies, DOMAIN).unwrap_or_default();
+                let jar = harvest(&response.set_cookies, DOMAIN, ambient).unwrap_or_default();
                 Ok((
                     Challenge::Qr { url, image: None },
                     super::state_of(&[("key", json!(key)), ("jar", json!(jar))]),
@@ -168,7 +174,7 @@ impl Provider for Bilibili {
         }
     }
 
-    fn poll(&self, session: &mut crate::session::Session) -> Result<Poll> {
+    fn poll(&self, session: &mut crate::session::Session, ambient: Ambient) -> Result<Poll> {
         let key = state_str(session, "key");
         if key.is_empty() {
             return Err(Error::channel("this session has no qrcode key"));
@@ -193,11 +199,11 @@ impl Provider for Bilibili {
 
         match code {
             poll_code::OK => {
-                let mut cookies = harvest(&response.set_cookies, DOMAIN).unwrap_or_default();
+                let mut cookies = harvest(&response.set_cookies, DOMAIN, ambient).unwrap_or_default();
                 if cookies.is_empty() {
                     if let Some(hop) = data.get("url").and_then(|v| v.as_str()) {
                         if let Ok(hop_response) = http::get(hop, &[("accept", "text/html,*/*")]) {
-                            cookies = harvest(&hop_response.set_cookies, DOMAIN).unwrap_or_default();
+                            cookies = harvest(&hop_response.set_cookies, DOMAIN, ambient).unwrap_or_default();
                         }
                     }
                 }
@@ -223,16 +229,21 @@ impl Provider for Bilibili {
         }
     }
 
-    fn submit(&self, session: &mut crate::session::Session, params: &Value) -> Result<Poll> {
+    fn submit(
+        &self,
+        session: &mut crate::session::Session,
+        params: &Value,
+        ambient: Ambient,
+    ) -> Result<Poll> {
         match session.method.as_str() {
             "sms" => {
                 // Two calls share one session: `tel` sends the code, `code`
                 // exchanges it for a login.
                 if let Some(code) = str_param(params, "code") {
-                    sms_login(session, code)
+                    sms_login(session, code, ambient)
                 } else {
                     let tel = str_param(params, "tel").ok_or_else(|| Error::channel("missing 'tel'"))?;
-                    sms_send(session, tel)
+                    sms_send(session, tel, ambient)
                 }
             }
             "password" => {
@@ -240,7 +251,7 @@ impl Provider for Bilibili {
                     .ok_or_else(|| Error::channel("missing 'username'"))?;
                 let password = str_param(params, "password")
                     .ok_or_else(|| Error::channel("missing 'password'"))?;
-                password_login(session, username, password)
+                password_login(session, username, password, ambient)
             }
             other => Err(Error::channel(format!(
                 "channel 'bilibili' has no submit step for '{other}'"
@@ -310,7 +321,7 @@ fn captcha_token() -> Result<String> {
 }
 
 /// SMS step 1: ask bilibili to text a code to `tel`.
-fn sms_send(session: &mut crate::session::Session, tel: &str) -> Result<Poll> {
+fn sms_send(session: &mut crate::session::Session, tel: &str, ambient: Ambient) -> Result<Poll> {
     let token = state_str(session, "captchaToken");
     let response = http::post_form(
         SMS_SEND_URL,
@@ -329,7 +340,7 @@ fn sms_send(session: &mut crate::session::Session, tel: &str) -> Result<Poll> {
     if code_of(&body) != 0 {
         return Err(Error::http(format!("bilibili sms send: {}", message_of(&body))));
     }
-    merge_jar(session, &harvest(&response.set_cookies, DOMAIN).unwrap_or_default());
+    merge_jar(session, &harvest(&response.set_cookies, DOMAIN, ambient).unwrap_or_default());
     state_set(session, "tel", json!(tel));
     state_set(session, "step", json!("awaiting_code"));
     Ok(Poll::NeedInput {
@@ -339,7 +350,7 @@ fn sms_send(session: &mut crate::session::Session, tel: &str) -> Result<Poll> {
 }
 
 /// SMS step 2: exchange the code for a login.
-fn sms_login(session: &mut crate::session::Session, code: &str) -> Result<Poll> {
+fn sms_login(session: &mut crate::session::Session, code: &str, ambient: Ambient) -> Result<Poll> {
     let tel = state_str(session, "tel");
     let response = http::post_form(
         SMS_LOGIN_URL,
@@ -352,7 +363,7 @@ fn sms_login(session: &mut crate::session::Session, code: &str) -> Result<Poll> 
             ("keep", "0"),
         ],
     )?;
-    finish_login(session, &response)
+    finish_login(session, &response, ambient)
 }
 
 /// Password login: RSA-encrypt `salt + password` and post it.
@@ -360,6 +371,7 @@ fn password_login(
     session: &mut crate::session::Session,
     username: &str,
     password: &str,
+    ambient: Ambient,
 ) -> Result<Poll> {
     let key_response = http::get(
         PASSWORD_KEY_URL,
@@ -397,23 +409,27 @@ fn password_login(
             ("go_url", "https://www.bilibili.com/"),
         ],
     )?;
-    finish_login(session, &response)
+    finish_login(session, &response, ambient)
 }
 
 /// Shared tail of the credential methods: check the API code, harvest cookies
 /// from the response or its redirect hop, then confirm with the nav API.
-fn finish_login(session: &mut crate::session::Session, response: &http::Response) -> Result<Poll> {
+fn finish_login(
+    session: &mut crate::session::Session,
+    response: &http::Response,
+    ambient: Ambient,
+) -> Result<Poll> {
     let body = response.json().unwrap_or(Value::Null);
     let code = code_of(&body);
     if code != 0 {
         return Err(Error::http(format!("bilibili login: {} ({code})", message_of(&body))));
     }
     let data = data_of(&body);
-    let mut cookies = harvest(&response.set_cookies, DOMAIN).unwrap_or_default();
+    let mut cookies = harvest(&response.set_cookies, DOMAIN, ambient).unwrap_or_default();
     if cookies.is_empty() {
         if let Some(hop) = data.get("url").and_then(|v| v.as_str()) {
             if let Ok(hop_response) = http::get(hop, &[("accept", "text/html,*/*")]) {
-                cookies = harvest(&hop_response.set_cookies, DOMAIN).unwrap_or_default();
+                cookies = harvest(&hop_response.set_cookies, DOMAIN, ambient).unwrap_or_default();
             }
         }
     }

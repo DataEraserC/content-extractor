@@ -20,7 +20,10 @@ use std::io::Read;
 use std::process::ExitCode;
 
 use serde_json::{json, Value};
-use vlogin_core::{Error, Hub};
+// `vlogin-abi` exposes the effectful facade as the crate `vlogin`: the library
+// it builds is `libvlogin.so` for the C ABI, and the CLI is its second host.
+use vlogin::Service;
+use vlogin_core::Error;
 
 /// Printed on a bad command line.
 const USAGE: &str = "\
@@ -173,60 +176,68 @@ fn parse(arguments: &[String]) -> Option<Command> {
 }
 
 /// Execute a parsed command against `hub`.
-fn run(hub: &Hub, command: Command) -> vlogin_core::Result<Value> {
+fn run(service: &Service, command: Command) -> vlogin_core::Result<Value> {
     match command {
-        Command::Channels => serde_json::to_value(hub.site_channels()).map_err(Error::from),
-        Command::Status => serde_json::to_value(hub.statuses()).map_err(Error::from),
+        Command::Channels => {
+            serde_json::to_value(service.site_channels()).map_err(Error::from)
+        }
+        Command::Status => serde_json::to_value(service.statuses()).map_err(Error::from),
         Command::Accounts { channel } => {
-            serde_json::to_value(hub.accounts(&channel)?).map_err(Error::from)
+            serde_json::to_value(service.accounts(&channel)?).map_err(Error::from)
         }
         Command::Start { channel, method, params } => {
             let request = vlogin_core::StartRequest { channel, method, params, label: None };
-            serde_json::to_value(hub.start(&request)?).map_err(Error::from)
+            serde_json::to_value(service.start(&request)?).map_err(Error::from)
         }
         Command::Poll { session_id } => {
-            serde_json::to_value(hub.poll(&session_id)?).map_err(Error::from)
+            serde_json::to_value(service.poll(&session_id)?).map_err(Error::from)
         }
         Command::Submit { session_id, params } => {
-            serde_json::to_value(hub.submit(&session_id, &params)?).map_err(Error::from)
+            serde_json::to_value(service.submit(&session_id, &params)?).map_err(Error::from)
         }
         Command::Browse { channel } => {
-            serde_json::to_value(hub.browse(&channel)?).map_err(Error::from)
+            serde_json::to_value(service.browse(&channel)?).map_err(Error::from)
         }
         Command::Import { channel, method, label, file } => {
             let cookies = match file.as_deref() {
                 Some("-") | None => {
                     let mut buffer = String::new();
-                    std::io::stdin().read_to_string(&mut buffer)?;
+                    std::io::stdin().read_to_string(&mut buffer).map_err(|error| {
+                        Error::io(format!("cannot read the cookie data from stdin: {error}"))
+                    })?;
                     buffer
                 }
-                Some(path) => std::fs::read_to_string(path)?,
+                // Reading a file named on the command line is this crate's
+                // effect, not the core's: the core owns no `std::io::Error`.
+                Some(path) => std::fs::read_to_string(path).map_err(|error| {
+                    Error::io(format!("cannot read {path}: {error}"))
+                })?,
             };
-            let account = hub.import(&channel, &method, &cookies, &label)?;
+            let account = service.import(&channel, &method, &cookies, &label)?;
             serde_json::to_value(account).map_err(Error::from)
         }
         Command::Check { channel, account } => {
-            let view = hub.status(&channel, account.as_deref())?;
+            let view = service.status(&channel, account.as_deref())?;
             serde_json::to_value(view).map_err(Error::from)
         }
         Command::Pin { channel, account } => {
-            serde_json::to_value(hub.pin(&channel, &account)?).map_err(Error::from)
+            serde_json::to_value(service.pin(&channel, &account)?).map_err(Error::from)
         }
         Command::Logout { channel, account } => {
-            Ok(json!({ "removed": hub.logout(&channel, &account)? }))
+            Ok(json!({ "removed": service.logout(&channel, &account)? }))
         }
-        Command::Clear { channel } => Ok(json!({ "removed": hub.clear(&channel)? })),
+        Command::Clear { channel } => Ok(json!({ "removed": service.clear(&channel)? })),
         Command::Export { channel, account } => {
-            Ok(json!({ "cookies": hub.export(&channel, account.as_deref())? }))
+            Ok(json!({ "cookies": service.export(&channel, account.as_deref())? }))
         }
         Command::Materialize { channel, account } => {
-            Ok(json!({ "path": hub.materialize(&channel, account.as_deref())? }))
+            Ok(json!({ "path": service.materialize(&channel, account.as_deref())? }))
         }
         Command::Cancel { session_id } => {
-            hub.cancel(&session_id)?;
+            service.cancel(&session_id)?;
             Ok(json!({ "cancelled": true }))
         }
-        Command::Sweep => Ok(json!({ "swept": hub.sweep()? })),
+        Command::Sweep => Ok(json!({ "swept": service.sweep()? })),
     }
 }
 
@@ -236,12 +247,11 @@ fn main() -> ExitCode {
         return usage();
     };
 
-    let hub = match Hub::open_default() {
-        Ok(hub) => hub,
-        Err(error) => return fail(&error),
-    };
+    // Opening the service cannot fail: the state root is resolved lazily and a
+    // first write creates it. Errors surface per command, where they belong.
+    let service = Service::discover();
 
-    match run(&hub, command) {
+    match run(&service, command) {
         Ok(value) => emit(json!({ "ok": true, "result": value })),
         Err(error) => fail(&error),
     }

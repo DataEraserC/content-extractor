@@ -12,6 +12,7 @@
 
 use serde_json::Value;
 
+use crate::ambient::Ambient;
 use crate::cookies;
 use crate::error::{Error, Result};
 use crate::model::{Challenge, ChannelInfo, MethodInfo, Poll};
@@ -43,15 +44,21 @@ pub trait Provider: Send + Sync {
 
     /// Begin a login. Returns what to render plus the state to persist in the
     /// session.
-    fn start(&self, method: &str, params: &Value) -> Result<(Challenge, Value)>;
+    ///
+    /// `ambient` supplies the clock and entropy the wire format needs; a
+    /// provider must never read either itself.
+    fn start(&self, method: &str, params: &Value, ambient: Ambient)
+    -> Result<(Challenge, Value)>;
 
     /// Advance a login that needs no further input (QR polling, OAuth loopback).
-    fn poll(&self, session: &mut Session) -> Result<Poll> {
+    fn poll(&self, session: &mut Session, ambient: Ambient) -> Result<Poll> {
+        let _ = ambient;
         Err(unsupported(&self.info(), &session.method))
     }
 
     /// Advance a login with user-supplied input (SMS code, password).
-    fn submit(&self, session: &mut Session, _params: &Value) -> Result<Poll> {
+    fn submit(&self, session: &mut Session, _params: &Value, ambient: Ambient) -> Result<Poll> {
+        let _ = ambient;
         Err(unsupported(&self.info(), &session.method))
     }
 
@@ -150,8 +157,11 @@ pub fn state_set(session: &mut Session, key: &str, value: Value) {
 /// Rejects an empty result: a login that issued no cookies did not complete,
 /// and storing an empty jar would silently downgrade later downloads to
 /// anonymous.
-pub fn harvest(set_cookies: &[String], fallback_domain: &str) -> Result<String> {
-    let parsed = cookies::parse_set_cookies(set_cookies);
+///
+/// `ambient` anchors a relative `Max-Age` attribute; see
+/// [`cookies::parse_set_cookies`].
+pub fn harvest(set_cookies: &[String], fallback_domain: &str, ambient: Ambient) -> Result<String> {
+    let parsed = cookies::parse_set_cookies(set_cookies, ambient.now_unix());
     if parsed.is_empty() {
         return Err(Error::cookie(format!(
             "no cookies were issued for {fallback_domain}; the login did not complete"

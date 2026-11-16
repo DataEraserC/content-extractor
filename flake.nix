@@ -32,6 +32,7 @@
               in
               !(lib.hasPrefix "result" base || base == "target" || lib.hasPrefix "." base);
           };
+        };
 
         cargoLock = {
           lockFile = ./Cargo.lock;
@@ -81,13 +82,64 @@
             installPhase = ''
               runHook preInstall
               mkdir -p $out/lib
-              find target -maxdepth 2 -name 'libvlogin.so' -exec cp {} $out/lib/ \;
+              find target -name 'libvlogin.so' -exec cp -v {} $out/lib/ \;
+              test -f $out/lib/libvlogin.so
               runHook postInstall
             '';
 
             # No tests to run for the ABI crate itself.
             doCheck = false;
           });
+
+          # The DeepSeek Harness host: the cordis plugin, its Web UI page and
+          # the koffi FFI loader, packaged as an npm bundle with the matching
+          # `libvlogin.so` beside it. Other harnesses get a sibling host
+          # directory that links the same C ABI.
+          dsh =
+            let
+              abi = pkgs.rustPlatform.buildRustPackage (common // {
+                pname = "vlogin-abi-native";
+                inherit cargoLock meta;
+                cargoBuildFlags = [ "-p" "vlogin-abi" ];
+                installPhase = ''
+                  runHook preInstall
+                  mkdir -p $out/lib
+                  find target -name 'libvlogin.so' -exec cp -v {} $out/lib/ \;
+              test -f $out/lib/libvlogin.so
+                  runHook postInstall
+                '';
+                doCheck = false;
+              });
+            in
+            pkgs.buildNpmPackage {
+              pname = "dsh-video-fetch";
+              version = (lib.importJSON ./hosts/dsh/package.json).version;
+
+              src = ./hosts/dsh;
+
+              npmDepsHash = "sha256-XGaMRfO+3cOmDYwNloTjuc3jycxquxnfsqKTP5mXfAo=";
+
+              # The plugin ships prebuilt JS (no bundler step); the package.json
+              # `files` whitelist drives the copy.
+              dontNpmBuild = true;
+
+              # test/live.mjs needs a browser and a real account.
+              doCheck = false;
+
+              installPhase = ''
+                runHook preInstall
+                mkdir -p $out/lib/node_modules/dsh-video-fetch
+                cp -r lib cordis.patch.yml package.json $out/lib/node_modules/dsh-video-fetch/
+                mkdir -p $out/lib/node_modules/dsh-video-fetch/native
+                cp ${abi}/lib/libvlogin.so $out/lib/node_modules/dsh-video-fetch/native/libvlogin.so
+                runHook postInstall
+              '';
+
+              meta = meta // {
+                description = "Video downloading for DeepSeek Harness with per-channel login and ffmpeg compression";
+                mainProgram = "dsh-video-fetch";
+              };
+            };
 
           default = vlogin;
         };

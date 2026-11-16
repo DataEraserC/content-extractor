@@ -5,6 +5,25 @@
 //! DeepSeek Harness, cordis, or any agent framework. The plugin
 //! (`dsh-video-fetch`) is a thin shell over it.
 //!
+//! ## The layering, and why
+//!
+//! This crate is a **protocol layer**. It owns wire formats — channel
+//! descriptors, HTTP request and response shapes, the Netscape cookie codec, the
+//! DevTools conversation, the account-pool layout — and it owns no machine-local
+//! decision. Reading a file, resolving a state root from the environment,
+//! spawning a browser, binding a port, reading a clock or drawing entropy all
+//! happen somewhere else, and the caller passes them in:
+//!
+//! | crate | role | may touch |
+//! |---|---|---|
+//! | `vlogin-core` | protocol + transport | network only |
+//! | `vlogin-abi` | effects behind the frozen C ABI | fs, env, processes, clock |
+//! | `vlogin-cli` | argv, prompts, exit codes | everything |
+//!
+//! [`store::Storage`] is the seam for bytes on a disk, and [`ambient::Ambient`]
+//! is the seam for time and entropy. `tests/purity.rs` enforces the boundary so
+//! it cannot erode silently.
+//!
 //! ## The two dimensions
 //!
 //! * **channel** — the site (`bilibili`, `douyin`, `youtube`, `tencent`,
@@ -20,7 +39,7 @@
 //! A channel holds many accounts, any of which may have been captured by any
 //! method. One is pinned as active; the rest are the rotation fallback when a
 //! download is rejected. Cookies never leave the store except through
-//! [`Hub::export`] / [`Hub::materialize`], which feed a downloader directly.
+//! `export` / `materialize`, which feed a downloader directly.
 //!
 //! ## Secrets boundary
 //!
@@ -29,8 +48,10 @@
 //! * errors carry status codes and truncated bodies, never cookie values;
 //! * the safe projection for display is [`AccountView`], which carries a cookie
 //!   *count* and no values;
-//! * account and session files are written 0600 inside 0700 directories.
+//! * account and session files are described as 0600 inside 0700 directories,
+//!   and enforcing that is the storage implementation's job.
 
+pub mod ambient;
 pub mod browser;
 pub mod channels;
 pub mod cookies;
@@ -42,21 +63,18 @@ pub mod store;
 pub mod util;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub use crate::ambient::Ambient;
 pub use crate::error::{Error, Result};
 pub use crate::model::{
     AccountStatus, AccountView, Challenge, ChannelInfo, MethodInfo, MethodKind, Poll,
 };
-pub use crate::store::Store;
-use crate::{
-    channels::Provider,
-    session::Session,
-};
+pub use crate::store::{Pool, Storage, Store};
+use crate::channels::Provider;
 
 /// Every registered channel, in picker order.
 pub fn registry() -> Vec<Arc<dyn Provider>> {
@@ -105,301 +123,54 @@ pub struct ChannelStatus {
     pub active: Option<String>,
 }
 
-/// The facade. Every method maps 1:1 onto a CLI subcommand and an ABI op, so
-/// there is a single surface to document and test.
+/// The channel registry: every advertised capability, and nothing else.
+///
+/// Pure. Holding no store, no clock and no storage means a caller can ask what a
+/// channel supports before it has decided where its state lives.
 pub struct Hub {
-    store: Store,
     providers: HashMap<String, Arc<dyn Provider>>,
     order: Vec<String>,
 }
 
 impl Hub {
-    /// Open a hub rooted at `root`.
-    pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
+    /// The registry every channel is advertised from.
+    #[must_use]
+    pub fn new() -> Self {
         let providers = registry();
         let order = providers.iter().map(|p| p.info().id.to_string()).collect();
         let map = providers
             .into_iter()
             .map(|p| (p.info().id.to_string(), p))
             .collect::<HashMap<_, _>>();
-        Ok(Self { store: Store::new(root), providers: map, order })
-    }
-
-    /// Open a hub at the default state root.
-    pub fn open_default() -> Result<Self> {
-        let root = store::default_root();
-        Self::open(root)
-    }
-
-    /// State root.
-    pub fn root(&self) -> &std::path::Path {
-        self.store.root()
+        Self { providers: map, order }
     }
 
     /// All channels, in picker order. `generic` is last so real sites win the
     /// URL routing too.
+    #[must_use]
     pub fn channels(&self) -> Vec<ChannelInfo> {
         self.order.iter().filter_map(|id| self.providers.get(id).map(|p| p.info())).collect()
     }
 
     /// Advertised channels without `generic`, which is a fallback rather than a
     /// site a user would pick.
+    #[must_use]
     pub fn site_channels(&self) -> Vec<ChannelInfo> {
         self.channels().into_iter().filter(|c| c.id != "generic").collect()
     }
 
-    fn provider(&self, channel: &str) -> Result<&Arc<dyn Provider>> {
-        self.providers
-            .get(channel)
-            .ok_or_else(|| Error::channel(format!(
+    /// One channel's provider, or the structured "unknown channel" error.
+    pub fn provider(&self, channel: &str) -> Result<&Arc<dyn Provider>> {
+        self.providers.get(channel).ok_or_else(|| {
+            Error::channel(format!(
                 "unknown channel '{channel}'; known channels: {}",
                 self.order.join(", ")
-            )))
-    }
-
-    /// Begin an interactive login (QR, SMS, password).
-    pub fn start(&self, request: &StartRequest) -> Result<StartResponse> {
-        let provider = self.provider(&request.channel)?;
-        let (challenge, state) = provider.start(&request.method, &request.params)?;
-        let mut session = Session::create(&request.channel, &request.method, state);
-        if let Some(label) = &request.label {
-            channels::state_set(&mut session, "label", Value::String(label.clone()));
-        }
-        session.save(&self.store.session_dir())?;
-        Ok(StartResponse { session_id: session.id.clone(), challenge })
-    }
-
-    /// Begin a browser-driven login: open the site in a managed browser and
-    /// wait for the user to sign in.
-    pub fn browse(&self, channel: &str) -> Result<StartResponse> {
-        let provider = self.provider(channel)?;
-        let info = provider.info();
-        let url = if info.login_url.is_empty() {
-            return Err(Error::channel(format!(
-                "channel '{channel}' has no login page to open; import cookies instead"
-            )));
-        } else {
-            info.login_url
-        };
-        channels::require_method(&info, "browser")?;
-        let handle = browser::launch(url)?;
-        let state = channels::state_of(&[
-            ("pid", Value::from(handle.pid)),
-            ("port", Value::from(handle.port)),
-            ("hosts", serde_json::to_value(&info.hosts)?),
-            ("jar", Value::String(String::new())),
-        ]);
-        let session = Session::create(channel, "browser", state);
-        session.save(&self.store.session_dir())?;
-        // Keep the child process alive for the lifetime of the session: the
-        // handle is dropped here, which would kill it, so leak it deliberately
-        // and let the pid/port be the only record. The browser exits when the
-        // user closes the window; `close_session` kills it by pid.
-        std::mem::forget(handle);
-        Ok(StartResponse {
-            session_id: session.id.clone(),
-            challenge: Challenge::Browse {
-                url: url.to_string(),
-                prompt: "已打开浏览器，请在其中完成登录后回到这里".into(),
-            },
+            ))
         })
     }
 
-    /// Advance a login that needs no further input.
-    pub fn poll(&self, session_id: &str) -> Result<PollResponse> {
-        let dir = self.store.session_dir();
-        let mut session = Session::load(&dir, session_id)?
-            .ok_or_else(|| Error::channel("that login session has expired; start again"))?;
-
-        if session.method == "browser" {
-            return self.poll_browser(&mut session);
-        }
-
-        let provider = self.provider(&session.channel)?;
-        let result = provider.poll(&mut session)?;
-        session.save(&dir)?;
-        self.finish(&mut session, result)
-    }
-
-    /// Advance a login with user-supplied input.
-    pub fn submit(&self, session_id: &str, params: &Value) -> Result<PollResponse> {
-        let dir = self.store.session_dir();
-        let mut session = Session::load(&dir, session_id)?
-            .ok_or_else(|| Error::channel("that login session has expired; start again"))?;
-        let provider = self.provider(&session.channel)?;
-        let result = provider.submit(&mut session, params)?;
-        session.save(&dir)?;
-        self.finish(&mut session, result)
-    }
-
-    /// Pull cookies out of the browser we launched for `session`.
-    fn poll_browser(&self, session: &mut Session) -> Result<PollResponse> {
-        let dir = self.store.session_dir();
-        let port = session
-            .state
-            .get("port")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| Error::channel("this browser session has no debugging port"))?
-            as u16;
-        let hosts: Vec<String> = session
-            .state
-            .get("hosts")
-            .and_then(|v| v.as_array())
-            .map(|list| {
-                list.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
-            })
-            .unwrap_or_default();
-        let host_refs: Vec<&str> = hosts.iter().map(|s| s.as_str()).collect();
-
-        match browser::cookies(port, &host_refs) {
-            Ok(cookies) if cookies::count_netscape_cookies(&cookies) > 0 => {
-                let provider = self.provider(&session.channel)?;
-                let identity = provider
-                    .check(&cookies)
-                    .map(|outcome| outcome.identity)
-                    .unwrap_or_default();
-                session.save(&dir)?;
-                self.finish(
-                    session,
-                    Poll::Done { cookies, identity },
-                )
-            }
-            Ok(_) => Ok(PollResponse {
-                result: Poll::Pending { message: "等待在浏览器中完成登录…".into() },
-                account: None,
-            }),
-            Err(error) => Ok(PollResponse {
-                // A browser that has not finished starting (or that the user
-                // closed) is a normal interim state, not a failure.
-                result: Poll::Pending { message: error.to_string() },
-                account: None,
-            }),
-        }
-    }
-
-    /// Store a completed login, or hand back the in-flight session untouched.
-    pub fn finish(&self, session: &mut Session, result: Poll) -> Result<PollResponse> {
-        match result {
-            Poll::Done { cookies, identity } => {
-                let label = channels::state_str(session, "label");
-                let view = self.store.upsert(
-                    &session.channel,
-                    &session.method,
-                    &cookies,
-                    &identity,
-                    &label,
-                )?;
-                Session::remove(&self.store.session_dir(), &session.id)?;
-                Ok(PollResponse {
-                    result: Poll::Done { cookies, identity },
-                    account: Some(view),
-                })
-            }
-            other => Ok(PollResponse { result: other, account: None }),
-        }
-    }
-
-    /// Import a finished credential (a pasted cookie file or header).
-    pub fn import(
-        &self,
-        channel: &str,
-        method: &str,
-        cookies_text: &str,
-        label: &str,
-    ) -> Result<AccountView> {
-        let provider = self.provider(channel)?;
-        let info = provider.info();
-        if method != "manual" {
-            channels::require_method(&info, method)?;
-        }
-        let normalized = channels::normalize_import(cookies_text, info.cookie_domain)?;
-        let identity = provider
-            .check(&normalized)
-            .map(|outcome| outcome.identity)
-            .unwrap_or_default();
-        self.store.upsert(channel, method, &normalized, &identity, label)
-    }
-
-    /// Probe one account and record the result. Omit `account_id` to probe the
-    /// pinned account.
-    pub fn status(&self, channel: &str, account_id: Option<&str>) -> Result<AccountView> {
-        let provider = self.provider(channel)?;
-        let account = match account_id {
-            Some(id) => self.store.get(channel, id)?,
-            None => self.store.active(channel)?,
-        };
-        let status = match provider.check(&account.cookies) {
-            Ok(outcome) if outcome.logged_in => AccountStatus::Active,
-            Ok(_) => AccountStatus::Expired,
-            Err(_) => AccountStatus::Unreachable,
-        };
-        let mut view = account.view();
-        view.status = status;
-        self.store.record_check(channel, &account.id, status)?;
-        Ok(view)
-    }
-
-    /// Every account of a channel, pinned first.
-    pub fn accounts(&self, channel: &str) -> Result<Vec<AccountView>> {
-        self.provider(channel)?;
-        self.store.list(channel)
-    }
-
-    /// Status of every channel, for a full dashboard render.
-    pub fn statuses(&self) -> Vec<ChannelStatus> {
-        self.site_channels()
-            .into_iter()
-            .map(|channel| ChannelStatus {
-                active: self.store.load(&channel.id).ok().and_then(|f| f.active),
-                accounts: self.store.list(&channel.id).unwrap_or_default(),
-                channel,
-            })
-            .collect()
-    }
-
-    /// Pin an account as the channel's credential.
-    pub fn pin(&self, channel: &str, account_id: &str) -> Result<AccountView> {
-        self.provider(channel)?;
-        self.store.pin(channel, account_id)
-    }
-
-    /// Log out of one account (drop its cookies).
-    pub fn logout(&self, channel: &str, account_id: &str) -> Result<bool> {
-        self.provider(channel)?;
-        self.store.remove(channel, account_id)
-    }
-
-    /// Drop every account of a channel.
-    pub fn clear(&self, channel: &str) -> Result<usize> {
-        self.provider(channel)?;
-        self.store.clear(channel)
-    }
-
-    /// Netscape text for one account, to hand to a downloader. SECRET.
-    pub fn export(&self, channel: &str, account_id: Option<&str>) -> Result<String> {
-        self.provider(channel)?;
-        match account_id {
-            Some(id) => self.store.cookies_for(channel, id),
-            None => Ok(self.store.active(channel)?.cookies),
-        }
-    }
-
-    /// Write one account's cookies to a 0600 file and return its path.
-    ///
-    /// This is what a downloader's `--cookies` flag points at. The file holds
-    /// secrets; the path does not.
-    pub fn materialize(&self, channel: &str, account_id: Option<&str>) -> Result<PathBuf> {
-        self.provider(channel)?;
-        match account_id {
-            Some(id) => self.store.materialize(channel, id),
-            None => {
-                let account = self.store.active(channel)?;
-                self.store.materialize(channel, &account.id)
-            }
-        }
-    }
-
     /// Route a URL to its channel, falling back to `generic`.
+    #[must_use]
     pub fn channel_for_url(&self, url: &str) -> Option<String> {
         let host = util::host_of(url)?;
         for id in &self.order {
@@ -419,40 +190,55 @@ impl Hub {
         }
         Some("generic".to_string())
     }
+}
 
-    /// Abandon a login in flight, killing its browser if it owns one.
-    pub fn cancel(&self, session_id: &str) -> Result<()> {
-        let dir = self.store.session_dir();
-        if let Some(session) = Session::load(&dir, session_id)? {
-            if let Some(pid) = session.state.get("pid").and_then(|v| v.as_u64()) {
-                let _ = kill_pid(pid);
-            }
-        }
-        Session::remove(&dir, session_id)
-    }
-
-    /// Delete expired session files.
-    pub fn sweep(&self) -> Result<usize> {
-        self.store.sweep_sessions(session::DEFAULT_TTL_MS)
+impl Default for Hub {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-/// Best-effort process kill by pid.
-fn kill_pid(pid: u64) -> Result<()> {
-    #[cfg(unix)]
-    {
-        let status = std::process::Command::new("kill")
-            .arg(pid.to_string())
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-        // A process that already exited is not an error here.
-        let _ = status;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_registry_advertises_generic_last() {
+        let hub = Hub::new();
+        let ids: Vec<&str> = hub.channels().iter().map(|c| c.id).collect();
+        assert_eq!(ids.last(), Some(&"generic"));
+        assert!(!hub.site_channels().iter().any(|c| c.id == "generic"));
+        assert_eq!(hub.site_channels().len(), 6);
     }
-    #[cfg(not(unix))]
-    {
-        let _ = pid;
+
+    #[test]
+    fn url_routing_prefers_a_real_site_and_falls_back_to_generic() {
+        let hub = Hub::new();
+        assert_eq!(hub.channel_for_url("https://www.bilibili.com/video/BV1").as_deref(), Some("bilibili"));
+        assert_eq!(hub.channel_for_url("https://example.com/x").as_deref(), Some("generic"));
+        assert_eq!(hub.channel_for_url(""), None);
     }
-    Ok(())
+
+    #[test]
+    fn an_unknown_channel_is_refused_with_the_known_list() {
+        let hub = Hub::new();
+        let error = match hub.provider("nope") {
+            Ok(_) => panic!("an unknown channel must be refused"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("unknown channel 'nope'"));
+        assert!(error.to_string().contains("bilibili"));
+    }
+
+    #[test]
+    fn every_advertised_channel_is_reachable_from_the_url_router() {
+        let hub = Hub::new();
+        for channel in hub.site_channels() {
+            if channel.hosts.is_empty() {
+                continue;
+            }
+            let url = format!("https://{}/", channel.hosts[0]);
+            assert_eq!(hub.channel_for_url(&url).as_deref(), Some(channel.id));
+        }
+    }
 }

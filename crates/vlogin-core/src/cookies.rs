@@ -25,7 +25,11 @@ pub struct Cookie {
 ///
 /// Port of `parseSetCookies`: `Max-Age` wins over `Expires`, a missing name
 /// skips the line, and unknown attributes are ignored.
-pub fn parse_set_cookies(lines: &[String]) -> Vec<Cookie> {
+///
+/// `now_unix` is the current time in unix seconds, supplied by the caller: a
+/// `Max-Age` attribute is relative, so anchoring it is the one place this codec
+/// needs a clock, and reading one is an effect this crate does not have.
+pub fn parse_set_cookies(lines: &[String], now_unix: i64) -> Vec<Cookie> {
     let mut out = Vec::new();
     for line in lines {
         let mut parts = line.split(';');
@@ -64,8 +68,7 @@ pub fn parse_set_cookies(lines: &[String]) -> Vec<Cookie> {
             }
         }
         if let Some(ma) = max_age {
-            let now = now_unix();
-            record.expires = (now + ma).max(0);
+            record.expires = (now_unix + ma).max(0);
         }
         if record.name.is_empty() {
             continue;
@@ -120,14 +123,6 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     era * 146097 + doe - 719468
-}
-
-/// Current unix time in seconds.
-pub fn now_unix() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
 }
 
 /// Serialize cookies to the Netscape file format.

@@ -32,11 +32,11 @@ use super::{
     data_of, harvest, jar_header, jar_of, merge_jar, message_of, require_method, state_str,
     Challenge, CheckOutcome, Poll, Provider,
 };
+use crate::ambient::Ambient;
 use crate::cookies;
 use crate::error::{Error, Result};
 use crate::http;
 use crate::model::{ChannelInfo, MethodInfo, MethodKind};
-use crate::store::random_token;
 
 const DOMAIN: &str = "douyin.com";
 const BASE: &str = "https://login.douyin.com/passport/web";
@@ -77,10 +77,15 @@ impl Provider for Douyin {
         }
     }
 
-    fn start(&self, method: &str, params: &Value) -> Result<(Challenge, Value)> {
+    fn start(
+        &self,
+        method: &str,
+        params: &Value,
+        ambient: Ambient,
+    ) -> Result<(Challenge, Value)> {
         require_method(&self.info(), method)?;
         let _ = params;
-        let fp = random_token(32);
+        let fp = ambient.token(32);
         let mut query = String::new();
         for (key, value) in [
             ("aid", "6383"),
@@ -117,7 +122,7 @@ impl Provider for Douyin {
                 message_of(&body)
             )));
         }
-        let jar = harvest(&response.set_cookies, DOMAIN).unwrap_or_default();
+        let jar = harvest(&response.set_cookies, DOMAIN, ambient).unwrap_or_default();
         Ok((
             Challenge::Qr { url: payload, image: None },
             super::state_of(&[
@@ -128,7 +133,7 @@ impl Provider for Douyin {
         ))
     }
 
-    fn poll(&self, session: &mut crate::session::Session) -> Result<Poll> {
+    fn poll(&self, session: &mut crate::session::Session, ambient: Ambient) -> Result<Poll> {
         let token = state_str(session, "token");
         let fp = state_str(session, "fp");
         if token.is_empty() {
@@ -208,11 +213,11 @@ impl Provider for Douyin {
                 Ok(Poll::Expired { message: or_default(description, "二维码已过期，请重新获取") })
             }
             "confirmed" | "success" => {
-                let mut cookies = harvest(&response.set_cookies, DOMAIN).unwrap_or_default();
+                let mut cookies = harvest(&response.set_cookies, DOMAIN, ambient).unwrap_or_default();
                 if cookies.is_empty() {
                     if let Some(hop) = data.get("redirect_url").and_then(|v| v.as_str()) {
                         if let Ok(hop_response) = http::get(hop, &[("accept", "text/html,*/*")]) {
-                            cookies = harvest(&hop_response.set_cookies, DOMAIN).unwrap_or_default();
+                            cookies = harvest(&hop_response.set_cookies, DOMAIN, ambient).unwrap_or_default();
                         }
                     }
                 }

@@ -9,9 +9,24 @@ description = "C ABI over vlogin-core: one JSON call in, one JSON string out"
 [lib]
 # Fixed to the on-disk library name: `libvlogin.so`. A cdylib keeps the
 # surface C-callable from koffi/ctypes/FFI without a second wrapper crate.
+#
+# `rlib` is here for the CLI: `vlogin-cli` is a second host of the same
+# effects, and re-deriving the state root, the clock and the browser launch in
+# it would be a second implementation of everything this crate exists to own.
+# The cdylib name and its exported symbols are unchanged either way.
 name = "vlogin"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 vlogin-core = { path = "../vlogin-core" }
 serde_json = "1"
+# Loopback CDP only, so no TLS feature is needed. The socket lives on this side
+# of the boundary because opening one is an effect; the frame and reply shapes
+# are in `vlogin_core::browser`.
+tungstenite = { version = "0.26", default-features = false, features = [
+    "handshake",
+] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "rustls-tls",
+] }
