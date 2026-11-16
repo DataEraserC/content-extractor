@@ -4,12 +4,20 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+
+    # Only the DSH host under hosts/dsh/ needs it: that host is a cordis bundle,
+    # so it has to be built by the harness's own buildDshBundle, which writes the
+    # nix-support/dsh-bundles.json manifest the DSH resolver reads. Every other
+    # harness host links the C ABI instead and needs nothing from this input.
+    deepseek-harness.url = "github:moraxyc/deepseek-harness.nix";
+    deepseek-harness.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
     { self
     , nixpkgs
     , flake-utils
+    , deepseek-harness
     ,
     }:
     flake-utils.lib.eachDefaultSystem (
@@ -97,6 +105,7 @@
           # directory that links the same C ABI.
           dsh =
             let
+              dshPkgs = pkgs.extend deepseek-harness.overlays.default;
               abi = pkgs.rustPlatform.buildRustPackage (common // {
                 pname = "vlogin-abi-native";
                 inherit cargoLock meta;
@@ -105,13 +114,17 @@
                   runHook preInstall
                   mkdir -p $out/lib
                   find target -name 'libvlogin.so' -exec cp -v {} $out/lib/ \;
-              test -f $out/lib/libvlogin.so
+                  test -f $out/lib/libvlogin.so
                   runHook postInstall
                 '';
                 doCheck = false;
               });
             in
-            pkgs.buildNpmPackage {
+            # Must be buildDshBundle, not plain buildNpmPackage: the DSH resolver
+            # reads nix-support/dsh-bundles.json to discover a bundle, and only
+            # this builder writes it (schema 1, one row pointing at the plugin's
+            # cordis patch and package root).
+            dshPkgs.dsh.buildDshBundle (finalAttrs: {
               pname = "dsh-video-fetch";
               version = (lib.importJSON ./hosts/dsh/package.json).version;
 
@@ -119,27 +132,29 @@
 
               npmDepsHash = "sha256-XGaMRfO+3cOmDYwNloTjuc3jycxquxnfsqKTP5mXfAo=";
 
-              # The plugin ships prebuilt JS (no bundler step); the package.json
-              # `files` whitelist drives the copy.
+              # The plugin ships prebuilt JS (no bundler step).
               dontNpmBuild = true;
 
               # test/live.mjs needs a browser and a real account.
               doCheck = false;
 
-              installPhase = ''
-                runHook preInstall
-                mkdir -p $out/lib/node_modules/dsh-video-fetch
-                cp -r lib cordis.patch.yml package.json $out/lib/node_modules/dsh-video-fetch/
+              # The protocol layer ships beside the host; the koffi loader finds
+              # it at native/ without any environment variable.
+              installation = dshPkgs.dsh.dsh-runtime;
+
+              postInstall = ''
                 mkdir -p $out/lib/node_modules/dsh-video-fetch/native
-                cp ${abi}/lib/libvlogin.so $out/lib/node_modules/dsh-video-fetch/native/libvlogin.so
-                runHook postInstall
+                install -m 0755 ${abi}/lib/libvlogin.so \
+                  $out/lib/node_modules/dsh-video-fetch/native/libvlogin.so
+                test -f $out/lib/node_modules/dsh-video-fetch/lib/client.js
+                test -f $out/lib/node_modules/dsh-video-fetch/native/libvlogin.so
               '';
 
               meta = meta // {
                 description = "Video downloading for DeepSeek Harness with per-channel login and ffmpeg compression";
                 mainProgram = "dsh-video-fetch";
               };
-            };
+            });
 
           default = vlogin;
         };
