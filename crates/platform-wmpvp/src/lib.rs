@@ -39,7 +39,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use extract_core::ambient::Ambient;
-use extract_core::content::{ContentKind, ExtractorInfo};
+use extract_core::content::{ContentKind, CredentialUse, ExtractorInfo};
 use extract_core::cookies;
 use extract_core::error::Result;
 use extract_core::model::{ChannelInfo, MethodInfo, MethodKind};
@@ -56,6 +56,11 @@ pub struct WmPvp;
 
 impl WmPvp {
     /// Construct a boxed provider for the registry.
+    ///
+    /// Returns `Arc<dyn Provider>` rather than `Self` on purpose: the
+    /// registry stores trait objects, so every platform hands back the same
+    /// erased type and the composition root needs no per-platform generics.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Arc<dyn Provider> {
         Arc::new(Self)
     }
@@ -76,7 +81,7 @@ impl Provider for WmPvp {
                 "完美世界电竞社区视频",
                 ContentKind::Video,
                 vec!["news.wmpvp.com/community-", "id="],
-                false,
+                CredentialUse::Enhances,
             )
             .with_metadata_keys(vec![
                 "vid", "steam_id", "play_formats", "read_count", "like_count",
@@ -88,7 +93,7 @@ impl Provider for WmPvp {
                 "完美世界电竞社区图文",
                 ContentKind::Post,
                 vec!["news.wmpvp.com/community-", "id="],
-                false,
+                CredentialUse::Enhances,
             )
             .with_metadata_keys(vec![
                 "text", "images", "image_count", "read_count", "like_count", "tags",

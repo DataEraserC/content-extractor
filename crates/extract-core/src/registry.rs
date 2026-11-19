@@ -130,7 +130,7 @@ impl Registry {
             })
             .collect();
         // Most specific first; ties keep registration order (stable sort).
-        out.sort_by(|a, b| b.score.cmp(&a.score));
+        out.sort_by_key(|entry| std::cmp::Reverse(entry.score));
         out
     }
 
@@ -176,7 +176,7 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::content::ContentKind;
+    use crate::content::{ContentKind, CredentialUse};
     use crate::model::{MethodInfo, MethodKind};
     use crate::provider::CheckOutcome;
 
@@ -203,7 +203,7 @@ mod tests {
                     "video",
                     ContentKind::Video,
                     vec!["example.com", "/video/"],
-                    false,
+                    CredentialUse::Enhances,
                 ),
                 ExtractorInfo::new(
                     "example.article",
@@ -211,7 +211,7 @@ mod tests {
                     "article",
                     ContentKind::Article,
                     vec!["example.com", "/read/"],
-                    false,
+                    CredentialUse::Enhances,
                 ),
             ]
         }
@@ -262,7 +262,7 @@ mod tests {
                         "any",
                         ContentKind::Video,
                         vec!["example.com"],
-                        false,
+                        CredentialUse::Enhances,
                     ),
                     ExtractorInfo::new(
                         "example.specific",
@@ -270,7 +270,7 @@ mod tests {
                         "specific",
                         ContentKind::Article,
                         vec!["example.com", "/read/", "cv"],
-                        false,
+                        CredentialUse::Enhances,
                     ),
                 ]
             }

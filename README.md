@@ -124,6 +124,35 @@ two regions' ids do not overlap. The deliverable is the match file — rendering
 needs the game client, which this project does not attempt. Map, mode, rounds
 and per-player settlement stats are parsed as convenience metadata.
 
+## Credentials are applied wherever they help
+
+The account pool exists so a logged-in jar gets used — not only where login is
+mandatory. Each extractor declares one of three values:
+
+| `credentials` | meaning | cookies sent? |
+|---|---|---|
+| `required` | extraction fails without a login (members-only, paid) | yes |
+| `enhances` | works anonymously, but a login improves it | **yes** |
+| `none` | public resource that ignores credentials | no |
+
+`enhances` is the common case and the reason this is three-valued rather than a
+boolean: bilibili serves a video at 360p anonymously and 1080p+ with `SESSDATA`;
+an article may be fans-only or paywalled; a YouTube video may be age-gated; a
+"direct" file link may sit behind auth. A boolean "needs login" collapsed all of
+that to `false` and silently dropped the credential the user had set up.
+
+So `bilibili.article`, `bilibili.opus`, `wmpvp.video`, `wmpvp.note`,
+`generic.file` and `generic.ytdlp` are all `enhances` and all receive the jar.
+Only `astralparty.replay` is `none` — a public CDN that ignores cookies, where
+sending them would just leak them to a third party.
+
+Credentials are scoped to the **host**, which is a separate question from which
+extractor runs: an article and a video on bilibili share one jar. Extractors that
+fetch directly convert the materialized Netscape file into a `Cookie:` header
+with domain/path/secure/expiry filtering (`hosts/dsh/lib/content/cookies.js`), so
+a cookie for one site never rides along to another. The header is a credential:
+it goes into the request and never into a result, metadata, or log.
+
 ## Login: platform × method
 
 Orthogonal dimensions, unchanged by the widening:
@@ -201,8 +230,14 @@ Every response is `{"ok":true,"result":…}` or
 nix build            # or: cargo build --release
 nix develop          # cargo, rustc, clippy, rustfmt, rust-analyzer, just
 cargo test --workspace
+cargo clippy --workspace --all-targets   # clean; no warnings
 cd hosts/dsh && npm test
 ```
+
+**Stage new files before `nix build`.** A flake source is the git *index*, not
+the working tree: an untracked file is invisible to the build, which then
+succeeds while shipping a package missing that file. Verify the output actually
+contains what you added — a green build is not proof.
 
 ## License
 

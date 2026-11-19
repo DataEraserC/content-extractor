@@ -20,7 +20,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use extract_core::provider::{require_method, Challenge, CheckOutcome, Provider};
-use extract_core::content::{ContentKind, ExtractorInfo};
+use extract_core::content::{ContentKind, CredentialUse, ExtractorInfo};
 use extract_core::ambient::Ambient;
 use extract_core::cookies;
 use extract_core::error::Result;
@@ -32,6 +32,11 @@ pub struct Generic;
 
 impl Generic {
     /// Construct a boxed provider for the registry.
+    ///
+    /// Returns `Arc<dyn Provider>` rather than `Self` on purpose: the
+    /// registry stores trait objects, so every platform hands back the same
+    /// erased type and the composition root needs no per-platform generics.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Arc<dyn Provider> {
         Arc::new(Self)
     }
@@ -54,7 +59,7 @@ impl Provider for Generic {
                 // Advisory only: the host also checks the extension/MIME, so a
                 // bare http prefix is enough to put this on the candidate list.
                 vec!["http"],
-                false,
+                CredentialUse::Enhances,
             )
             .with_metadata_keys(vec!["content_type", "bytes"]),
             ExtractorInfo::new(
@@ -63,7 +68,7 @@ impl Provider for Generic {
                 "yt-dlp（任意站点视频/音频）",
                 ContentKind::Video,
                 vec!["http"],
-                false,
+                CredentialUse::Enhances,
             )
             .with_metadata_keys(vec!["extractor_key", "formats", "subtitles"]),
         ]

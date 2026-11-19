@@ -32,6 +32,7 @@
 
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { cookieHeaderFrom, withCookie } from '../cookies.js'
 
 /** The public post API the SPA calls. */
 export const POST_API = 'https://appengine.wmpvp.com/steamcn/community/post/getPostById'
@@ -127,12 +128,15 @@ export function projectPost(post) {
  * @param {number} timeoutMs - hard deadline.
  * @returns {Promise<number>} bytes written.
  */
-async function downloadWithReferer(url, path, timeoutMs) {
+async function downloadWithReferer(url, path, timeoutMs, cookiesPath = '') {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   let response
   try {
-    response = await fetch(url, { signal: controller.signal, headers: { 'user-agent': UA, referer: CDN_REFERER } })
+    response = await fetch(url, {
+      signal: controller.signal,
+      headers: withCookie({ 'user-agent': UA, referer: CDN_REFERER }, cookieHeaderFrom(cookiesPath, url)),
+    })
   } catch (error) {
     throw new Error(`download failed (${url.slice(0, 120)}): ${error.message}`)
   } finally {
@@ -152,7 +156,7 @@ async function downloadWithReferer(url, path, timeoutMs) {
  * @param {number} timeoutMs - hard deadline for the API call.
  * @returns {Promise<{id: string, post: object, metadata: object}>}
  */
-async function fetchPost(input, timeoutMs) {
+async function fetchPost(input, timeoutMs, cookiesPath = '') {
   const id = postIdOf(input)
   if (id === null) throw new Error('a 完美世界电竞 post needs a community-detail URL with ?id=… or a numeric id')
   const controller = new AbortController()
@@ -210,7 +214,7 @@ export const wmpvpVideo = {
   label: '完美世界电竞社区视频',
   kind: 'video',
   patterns: WMPVP_PATTERNS,
-  requiresLogin: false,
+  credentials: 'enhances',
   metadataKeys: [
     'vid', 'steam_id', 'play_formats', 'read_count', 'like_count',
     'reply_count', 'tags', 'width', 'height',
@@ -223,9 +227,9 @@ export const wmpvpVideo = {
    * @param {object} opts - extract options.
    * @returns {Promise<object>} ExtractResult.
    */
-  async extract(input, { outDir, timeoutMs }) {
+  async extract(input, { outDir, timeoutMs, cookiesPath = '' }) {
     const deadline = Date.now() + timeoutMs
-    const { id, post, metadata } = await fetchPost(input, Math.max(1000, deadline - Date.now()))
+    const { id, post, metadata } = await fetchPost(input, Math.max(1000, deadline - Date.now()), cookiesPath)
     const format = bestFormat(post.videoInfo?.playInfoList)
     if (!format) {
       throw new Error(
@@ -237,7 +241,7 @@ export const wmpvpVideo = {
     if (remaining <= 0) throw new Error('完美世界电竞 post fetched but no time left to download the video')
     const ext = String(format.format ?? 'mp4').replace(/[^a-z0-9]/gi, '') || 'mp4'
     const videoPath = join(outDir, `wmpvp-${id}.${ext}`)
-    const bytes = await downloadWithReferer(format.playURL, videoPath, remaining)
+    const bytes = await downloadWithReferer(format.playURL, videoPath, remaining, cookiesPath)
     metadata.width = format.width
     metadata.height = format.height
     return finish('video', id, outDir, [{ path: videoPath, role: 'media', bytes }], metadata, post)
@@ -257,7 +261,7 @@ export const wmpvpNote = {
   label: '完美世界电竞社区图文',
   kind: 'post',
   patterns: WMPVP_PATTERNS,
-  requiresLogin: false,
+  credentials: 'enhances',
   metadataKeys: ['text', 'images', 'image_count', 'read_count', 'like_count', 'tags'],
   suggests: wmpvpSuggests,
 
@@ -267,9 +271,9 @@ export const wmpvpNote = {
    * @param {object} opts - extract options.
    * @returns {Promise<object>} ExtractResult.
    */
-  async extract(input, { outDir, timeoutMs }) {
+  async extract(input, { outDir, timeoutMs, cookiesPath = '' }) {
     const deadline = Date.now() + timeoutMs
-    const { id, post, metadata } = await fetchPost(input, Math.max(1000, deadline - Date.now()))
+    const { id, post, metadata } = await fetchPost(input, Math.max(1000, deadline - Date.now()), cookiesPath)
     if (bestFormat(post.videoInfo?.playInfoList)) {
       throw new Error(
         `完美世界电竞 post ${id} is a video post, not an image/text note; use extractor "wmpvp.video" instead`,
@@ -286,7 +290,7 @@ export const wmpvpNote = {
       index += 1
       const imagePath = join(outDir, `wmpvp-${id}-img${index}.jpg`)
       try {
-        const bytes = await downloadWithReferer(imageUrl, imagePath, remaining)
+        const bytes = await downloadWithReferer(imageUrl, imagePath, remaining, cookiesPath)
         files.push({ path: imagePath, role: 'image', bytes })
       } catch { /* one bad image must not sink the whole post */ }
     }

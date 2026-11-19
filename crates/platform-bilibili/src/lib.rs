@@ -42,7 +42,7 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use extract_core::content::{ContentKind, ExtractorInfo};
+use extract_core::content::{ContentKind, CredentialUse, ExtractorInfo};
 use extract_core::provider::{
     code_of, data_of, harvest, jar_header, jar_of, merge_jar, message_of, require_method,
     state_of, state_set, state_str, str_param, Challenge, CheckOutcome, Poll, Provider,
@@ -77,6 +77,11 @@ pub struct Bilibili;
 
 impl Bilibili {
     /// Construct a boxed provider for the registry.
+    ///
+    /// Returns `Arc<dyn Provider>` rather than `Self` on purpose: the
+    /// registry stores trait objects, so every platform hands back the same
+    /// erased type and the composition root needs no per-platform generics.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Arc<dyn Provider> {
         Arc::new(Self)
     }
@@ -97,7 +102,7 @@ impl Provider for Bilibili {
                 "哔哩哔哩视频",
                 ContentKind::Video,
                 vec!["bilibili.com/video/"],
-                false,
+                CredentialUse::Enhances,
             )
             .with_metadata_keys(vec![
                 "bvid", "aid", "cid", "pages", "view_count", "danmaku_count", "uploader_id",
@@ -108,7 +113,7 @@ impl Provider for Bilibili {
                 "哔哩哔哩专栏文章",
                 ContentKind::Article,
                 vec!["bilibili.com/read/"],
-                false,
+                CredentialUse::Enhances,
             )
             .with_metadata_keys(vec![
                 "cvid", "author_id", "text", "images", "word_count",
@@ -120,7 +125,7 @@ impl Provider for Bilibili {
                 "哔哩哔哩动态/图文",
                 ContentKind::Post,
                 vec!["bilibili.com/opus/"],
-                false,
+                CredentialUse::Enhances,
             )
             .with_metadata_keys(vec![
                 "opus_id", "author_id", "text", "images", "view_count", "like_count",
@@ -131,7 +136,7 @@ impl Provider for Bilibili {
                 "哔哩哔哩音频",
                 ContentKind::Audio,
                 vec!["bilibili.com/audio/"],
-                false,
+                CredentialUse::Enhances,
             )
             .with_metadata_keys(vec!["auid", "lyric", "duration"]),
             ExtractorInfo::new(
@@ -140,7 +145,7 @@ impl Provider for Bilibili {
                 "哔哩哔哩直播",
                 ContentKind::Live,
                 vec!["live.bilibili.com/"],
-                false,
+                CredentialUse::Enhances,
             )
             .with_metadata_keys(vec!["room_id", "live_status", "area_name"]),
         ]

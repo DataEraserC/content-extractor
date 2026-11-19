@@ -16,7 +16,11 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
-    "test:live": "node test/live.mjs"
+    "test:live": "node test/live.mjs",
+    "test:cookie": "node test/live-cookie-propagation.mjs",
+    "test:article": "node test/live-article.mjs",
+    "test:replay": "node test/live-replay.mjs",
+    "test:wmpvp": "node test/live-wmpvp.mjs"
   },
   "dsh": {
     "bundle": {

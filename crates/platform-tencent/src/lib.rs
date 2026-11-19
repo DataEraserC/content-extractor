@@ -30,7 +30,7 @@ use extract_core::provider::{ state_of,
     harvest, jar_header, jar_of, merge_jar, require_method, state_str, Challenge, CheckOutcome,
     Poll, Provider,
 };
-use extract_core::content::{ContentKind, ExtractorInfo};
+use extract_core::content::{ContentKind, CredentialUse, ExtractorInfo};
 use extract_core::ambient::Ambient;
 use extract_core::cookies;
 use extract_core::error::{Error, Result};
@@ -52,6 +52,11 @@ pub struct Tencent;
 
 impl Tencent {
     /// Construct a boxed provider for the registry.
+    ///
+    /// Returns `Arc<dyn Provider>` rather than `Self` on purpose: the
+    /// registry stores trait objects, so every platform hands back the same
+    /// erased type and the composition root needs no per-platform generics.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Arc<dyn Provider> {
         Arc::new(Self)
     }
@@ -71,7 +76,7 @@ impl Provider for Tencent {
             "腾讯视频",
             ContentKind::Video,
             vec!["v.qq.com/x/"],
-            true,
+            CredentialUse::Required,
         )
         .with_metadata_keys(vec!["vid", "cid", "cover_id"])]
     }
@@ -146,7 +151,7 @@ impl Provider for Tencent {
         Ok((
             Challenge::Qr {
                 url: url.clone(),
-                image: Some(format!("data:image/png;base64,{}", base64_encode(&bytes))),
+                image: Some(format!("data:image/png;base64,{}", base64_encode(bytes))),
             },
             state_of(&[
                 ("qrsig", json!(qrsig)),

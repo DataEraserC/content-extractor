@@ -97,10 +97,8 @@ export const genericYtdlp = {
   kind: 'video',
   // Advisory: any http page. Specificity is low so site extractors outrank it.
   patterns: ['http'],
-  requiresLogin: false,
+  credentials: 'enhances',
   metadataKeys: ['extractor', 'formats', 'view_count', 'like_count', 'tags'],
-  // yt-dlp is the one extractor that benefits from a logged-in cookie jar.
-  usesCookies: true,
 
   /**
    * Refine the advisory pattern match: a direct media/file link belongs to

@@ -28,6 +28,7 @@
 
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { cookieHeaderFrom, withCookie } from '../cookies.js'
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
 
@@ -46,7 +47,7 @@ function sleep(ms) {
  * arrives or the caller's deadline runs out. The error names the observed
  * behaviour so a caller knows retrying later is the remedy.
  */
-async function fetchHtml(url, timeoutMs) {
+async function fetchHtml(url, timeoutMs, cookiesPath = '') {
   const deadline = Date.now() + Math.max(20000, timeoutMs)
   let attempts = 0
   let last = ''
@@ -56,14 +57,16 @@ async function fetchHtml(url, timeoutMs) {
     const perTry = Math.min(20000, Math.max(3000, deadline - Date.now()))
     const timer = setTimeout(() => controller.abort(), perTry)
     try {
+      // A logged-in jar unlocks fans-only / paywalled columns and stops the
+      // shell-page loop far sooner, so it is attached whenever one is stored.
       const response = await fetch(url, {
         signal: controller.signal,
-        headers: {
+        headers: withCookie({
           'user-agent': UA,
           accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
           referer: 'https://www.bilibili.com/',
-        },
+        }, cookieHeaderFrom(cookiesPath, url)),
       })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const text = await response.text()
@@ -303,13 +306,13 @@ export function projectArticle(state, url, kind, exactId = '') {
 }
 
 /** Download one image, tolerating a failure so one bad URL cannot sink a post. */
-async function downloadImage(url, path, timeoutMs, referer) {
+async function downloadImage(url, path, timeoutMs, referer, cookiesPath = '') {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { 'user-agent': UA, referer },
+      headers: withCookie({ 'user-agent': UA, referer }, cookieHeaderFrom(cookiesPath, url)),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const data = Buffer.from(await response.arrayBuffer())
@@ -321,13 +324,13 @@ async function downloadImage(url, path, timeoutMs, referer) {
 }
 
 /** Shared implementation for the article and opus extractors. */
-async function extractText(kind, id, input, { outDir, timeoutMs, params }) {
+async function extractText(kind, id, input, { outDir, timeoutMs, params, cookiesPath = '' }) {
   const url = String(input.url ?? '')
   if (!/^https?:\/\//i.test(url)) throw new Error(`${id} needs a page URL`)
   const deadline = Date.now() + timeoutMs
   // Give the page fetch most of the budget: the shell-page retry loop needs it,
   // and image downloads afterwards are individually short.
-  const html = await fetchHtml(url, Math.max(20000, deadline - Date.now() - 15000))
+  const html = await fetchHtml(url, Math.max(20000, deadline - Date.now() - 15000), cookiesPath)
   const state = initialStateOf(html)
   const { metadata, images } = projectArticle(state, url, kind, exactIdOf(html))
 
@@ -349,7 +352,7 @@ async function extractText(kind, id, input, { outDir, timeoutMs, params }) {
       const ext = (/\.(jpe?g|png|gif|webp)(?:\?|$)/i.exec(image.url)?.[1] ?? 'jpg').toLowerCase()
       const imagePath = join(outDir, `${stem}-img${index}.${ext}`)
       try {
-        const bytes = await downloadImage(image.url, imagePath, remaining, 'https://www.bilibili.com/')
+        const bytes = await downloadImage(image.url, imagePath, remaining, 'https://www.bilibili.com/', cookiesPath)
         files.push({ path: imagePath, role: 'image', bytes })
       } catch { /* keep going: partial images beat no article */ }
     }
@@ -369,7 +372,7 @@ export const bilibiliArticle = {
   label: '哔哩哔哩专栏文章',
   kind: 'article',
   patterns: ['bilibili.com/read/'],
-  requiresLogin: false,
+  credentials: 'enhances',
   metadataKeys: [
     'cvid', 'author_id', 'text', 'images', 'word_count', 'view_count',
     'like_count', 'coin_count', 'favorite_count', 'collection',
@@ -388,7 +391,7 @@ export const bilibiliOpus = {
   label: '哔哩哔哩动态/图文',
   kind: 'post',
   patterns: ['bilibili.com/opus/'],
-  requiresLogin: false,
+  credentials: 'enhances',
   metadataKeys: ['opus_id', 'author_id', 'text', 'images', 'view_count', 'like_count'],
 
   /** @returns {Promise<object>} ExtractResult with a .md file and images. */

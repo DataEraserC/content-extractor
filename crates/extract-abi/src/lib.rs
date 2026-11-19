@@ -102,7 +102,7 @@ pub unsafe extern "C" fn extract_call(
 /// **not** be freed.
 #[no_mangle]
 pub extern "C" fn extract_version() -> *const c_char {
-    b"0.2.0\0".as_ptr() as *const c_char
+    c"0.2.0".as_ptr()
 }
 
 /// A failed operation, tagged with a stable machine-readable `kind`.

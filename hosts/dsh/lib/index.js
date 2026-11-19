@@ -418,7 +418,8 @@ export function apply(ctx, config) {
         'it never picks one for you. Read the list, then call content_extract with the chosen extractor id. ' +
         'This two-step flow exists because one host serves many content kinds: bilibili has videos, articles ' +
         '(/read/cv…), opus posts (/opus/…), audio and live rooms, and treating an article as a video fails. ' +
-        'Each candidate carries id, platform, label, kind, patterns, requiresLogin and its known metadata keys.',
+        'Each candidate carries id, platform, label, kind, patterns, credentials (required/enhances/none) and its known metadata keys. ' +
+        'credentials=enhances means it works anonymously but a stored login improves it (e.g. bilibili 360p → 1080p+), and those cookies ARE applied.',
       parameters: {
         url: { type: 'string', description: 'Page or resource URL (http/https)' },
         id: { type: 'string', description: 'Bare resource id (e.g. a 16-digit Astral Party replay id)' },
@@ -436,7 +437,9 @@ export function apply(ctx, config) {
         const lines = [`${found.length} candidate(s), most specific first — choose one and pass it to content_extract:`]
         for (const entry of found) {
           const e = entry.extractor
-          lines.push(`  ${e.id} — ${e.label} [${e.kind}]${e.requiresLogin ? ' (login helps)' : ''}`)
+          const cred = e.credentials === 'required' ? ' (login required)'
+            : e.credentials === 'enhances' ? ' (login improves quality/access)' : ''
+          lines.push(`  ${e.id} — ${e.label} [${e.kind}]${cred}`)
           lines.push(`    why: ${entry.reason} (specificity ${entry.score})`)
           if (e.metadataKeys.length > 0) lines.push(`    extra metadata: ${e.metadataKeys.join(', ')}`)
         }
@@ -469,9 +472,13 @@ export function apply(ctx, config) {
         if (url === '' && id === '') throw new Error('content_extract needs a url or an id')
         if (url !== '' && !/^https?:\/\//i.test(url)) throw new Error(`unsupported URL scheme (need http/https): ${url.slice(0, 60)}`)
         const outDir = downloadDirOf(config, exec)
-        // Cookie rotation applies only when a login platform owns the URL AND
-        // the native library is loaded — a missing library must not take down
-        // public content (replays, articles, direct files).
+        // Credentials come from the platform that owns the URL's *host*, which
+        // is a different question from which extractor runs: an article and a
+        // video on bilibili share one cookie jar. Rotation applies whenever the
+        // chosen extractor's `credentials` is required or enhances — the
+        // registry decides that, so a login is used wherever it helps rather
+        // than only where it is mandatory. A missing native library degrades to
+        // anonymous instead of failing public content.
         let accounts = []
         let materialize = null
         if (url !== '' && nativeStatus().available) {
@@ -516,7 +523,7 @@ export function apply(ctx, config) {
         const rows = listExtractors()
         return {
           text: rows
-            .map((row) => `${row.id} (${row.label}) — kind: ${row.kind}, platform: ${row.platform}${row.requiresLogin ? ', login helps' : ''}`)
+            .map((row) => `${row.id} (${row.label}) — kind: ${row.kind}, platform: ${row.platform}, credentials: ${row.credentials}`)
             .join('\n'),
         }
       },

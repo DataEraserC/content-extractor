@@ -153,6 +153,28 @@ highlights.wmpvp.com — that CDN requires a `Referer: https://news.wmpvp.com/`
 header, which the extractor sends. `wmpvp.note` downloads the pictures and puts
 the text in metadata.
 
+## Credentials reach non-video extractors too
+
+Every extractor declares `credentials: 'required' | 'enhances' | 'none'`:
+
+- **required** — gated content; extraction fails without a login.
+- **enhances** — works anonymously, but a login improves quality or access.
+  **Stored cookies are still attached.** This is most extractors: a bilibili
+  video is 360p anonymously and 1080p+ with `SESSDATA`, an article may be
+  fans-only, a direct file link may sit behind auth.
+- **none** — a public resource that ignores credentials (`astralparty.replay`).
+  Sending cookies there would only leak them.
+
+A boolean "needs login" used to conflate the first two, so only video benefited
+from the account pool. `lib/content/cookies.js` now converts the materialized
+Netscape jar into a `Cookie:` header for extractors that use `fetch` directly
+(article, opus, PWP, direct file), with domain/path/secure/expiry filtering so a
+cookie never crosses sites. yt-dlp keeps reading the file via `--cookies`.
+
+`test/live-cookie-propagation.mjs` proves it end-to-end against a local echo
+server: the article and file extractors really send the header, and the replay
+extractor really does not.
+
 ## Web page
 
 The package ships a browser half (`lib/client.js`, declared as `dsh.client`), so
@@ -293,8 +315,9 @@ user override via `ytdlpBinary` / `ffmpegBinary` still wins.
 ```bash
 npm test         # unit tests: args, cookies, settings, routes, registration, content layer (offline)
 npm run test:live  # real bilibili download + ffmpeg + QR start/poll (needs network)
-node test/live-article.mjs # real bilibili ARTICLE extraction (needs network)
-node test/live-replay.mjs  # real Astral Party replay download + parse (needs network)
-node test/live-video.mjs   # real metadata probe + video download via bilibili.video (needs network)
-node test/live-wmpvp.mjs   # real news.wmpvp.com post download (needs network)
+npm run test:cookie      # credentials reach non-video extractors (offline, local echo server)
+npm run test:article     # real bilibili ARTICLE extraction (needs network)
+npm run test:replay      # real Astral Party replay download + parse (needs network)
+node test/live-video.mjs # real metadata probe + video download via bilibili.video (needs network)
+npm run test:wmpvp       # real news.wmpvp.com post download (needs network)
 ```

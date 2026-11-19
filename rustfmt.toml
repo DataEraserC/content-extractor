@@ -1,0 +1,13 @@
+# Formatting is intentionally NOT enforced repo-wide.
+#
+# These crates were written with compact struct literals and a wider line than
+# rustfmt's defaults. `cargo fmt --all` would rewrite 200+ places that were never
+# wrong, burying real changes in noise, and no combination of the available knobs
+# reproduces the existing layout exactly (verified: max_width + small_heuristics
+# still leaves ~112 diffs).
+#
+# So this file deliberately sets nothing that reflows existing code. Format NEW
+# code by hand to match its neighbours; do not run a blanket `cargo fmt --all`
+# as part of an unrelated change. If the project ever wants uniform formatting,
+# that should be one dedicated commit whose whole diff is the reformat.
+edition = "2021"

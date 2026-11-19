@@ -8,7 +8,7 @@
 // one import + one array entry below. Nothing else changes: not the tools, not
 // the routes, not the page.
 
-import { assertExtractor, specificity, suggests } from './contract.js'
+import { assertExtractor, specificity, suggests, usesCredentials } from './contract.js'
 import { bilibiliArticle, bilibiliOpus } from './bilibili/article.js'
 import { bilibiliVideo } from './bilibili/video.js'
 import { wmpvpNote, wmpvpVideo } from './wmpvp/post.js'
@@ -84,7 +84,7 @@ function describe(extractor) {
     label: extractor.label,
     kind: extractor.kind,
     patterns: extractor.patterns,
-    requiresLogin: Boolean(extractor.requiresLogin),
+    credentials: extractor.credentials,
     metadataKeys: extractor.metadataKeys ?? [],
   }
 }
@@ -130,8 +130,12 @@ export async function extract({ input, outDir, format, accounts = [], materializ
   }
   const extractor = extractorOf(chosen)
   const deadline = Date.now() + timeoutMs
-  // Extractors that never read cookies get exactly one anonymous attempt.
-  const order = extractor.requiresLogin && accounts.length > 0 ? accounts : [null]
+  // Attach the platform's stored credentials wherever they help — not only
+  // where they are mandatory. `enhances` is the common case (a bilibili video
+  // is 360p anonymously and 1080p+ with SESSDATA), so gating on "required"
+  // would silently throw away the login the user set up. Only `none` (a public
+  // CDN that ignores cookies) gets a single anonymous attempt.
+  const order = usesCredentials(extractor.credentials) && accounts.length > 0 ? accounts : [null]
   let last = null
   for (let index = 0; index < order.length; index += 1) {
     const account = order[index]

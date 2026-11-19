@@ -18,7 +18,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use extract_core::provider::{require_method, Challenge, CheckOutcome, Provider};
-use extract_core::content::{ContentKind, ExtractorInfo};
+use extract_core::content::{ContentKind, CredentialUse, ExtractorInfo};
 use extract_core::ambient::Ambient;
 use extract_core::cookies;
 use extract_core::error::{Error, Result};
@@ -34,6 +34,11 @@ pub struct Youku;
 
 impl Youku {
     /// Construct a boxed provider for the registry.
+    ///
+    /// Returns `Arc<dyn Provider>` rather than `Self` on purpose: the
+    /// registry stores trait objects, so every platform hands back the same
+    /// erased type and the composition root needs no per-platform generics.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Arc<dyn Provider> {
         Arc::new(Self)
     }
@@ -53,7 +58,7 @@ impl Provider for Youku {
             "优酷视频",
             ContentKind::Video,
             vec!["youku.com/video"],
-            true,
+            CredentialUse::Required,
         )
         .with_metadata_keys(vec!["vid", "show_id"])]
     }

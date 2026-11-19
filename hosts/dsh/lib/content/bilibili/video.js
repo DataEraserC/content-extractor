@@ -18,7 +18,7 @@ export const bilibiliVideo = {
   patterns: ['bilibili.com/video/'],
   // Public videos work anonymously; a login raises the quality tier, so the
   // registry rotates this platform's cookie jars when any are stored.
-  requiresLogin: true,
+  credentials: 'enhances',
   metadataKeys: [
     'bvid', 'aid', 'view_count', 'like_count', 'danmaku_count', 'uploader_id', 'pages',
   ],

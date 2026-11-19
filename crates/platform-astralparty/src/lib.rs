@@ -30,7 +30,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use extract_core::ambient::Ambient;
-use extract_core::content::{ContentKind, ExtractorInfo};
+use extract_core::content::{ContentKind, CredentialUse, ExtractorInfo};
 use extract_core::cookies;
 use extract_core::error::Result;
 use extract_core::model::{ChannelInfo, MethodInfo, MethodKind};
@@ -46,6 +46,11 @@ pub struct AstralParty;
 
 impl AstralParty {
     /// Construct a boxed provider for the registry.
+    ///
+    /// Returns `Arc<dyn Provider>` rather than `Self` on purpose: the
+    /// registry stores trait objects, so every platform hands back the same
+    /// erased type and the composition root needs no per-platform generics.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Arc<dyn Provider> {
         Arc::new(Self)
     }
@@ -81,7 +86,7 @@ impl Provider for AstralParty {
             ContentKind::Replay,
             // Both the bare-id form (host resolves it) and the CDN URL form.
             vec!["feimogames.com/prod/"],
-            false,
+            CredentialUse::None,
         )
         .with_metadata_keys(vec![
             "region", "room_id", "room_name", "map_id", "map_name", "mode",
@@ -155,6 +160,7 @@ mod tests {
         assert_eq!(extractors.len(), 1);
         assert_eq!(extractors[0].kind, ContentKind::Replay);
         assert!(extractors[0].suggests("https://sereplaycn.feimogames.com/prod/1795093645690603"));
-        assert!(!extractors[0].requires_login);
+        assert_eq!(extractors[0].credentials, CredentialUse::None);
+        assert!(!extractors[0].uses_credentials(), "a public CDN file must not receive cookies");
     }
 }

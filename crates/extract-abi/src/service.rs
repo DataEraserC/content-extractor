@@ -294,10 +294,10 @@ impl Service {
             .into_iter()
             .map(|platform| PlatformStatus {
                 active: pool
-                    .load(&platform.id, self.ambient())
+                    .load(platform.id, self.ambient())
                     .ok()
                     .and_then(|file| file.active),
-                accounts: pool.list(&platform.id, self.ambient()).unwrap_or_default(),
+                accounts: pool.list(platform.id, self.ambient()).unwrap_or_default(),
                 extractors: self.registry.extractors_of(platform.id),
                 platform,
             })

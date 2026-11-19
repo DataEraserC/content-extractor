@@ -14,6 +14,8 @@ import { fileNameFor } from '../lib/content/generic/file.js'
 import { bestFormat, postIdOf, projectPost } from '../lib/content/wmpvp/post.js'
 import { buildProbeArgs, projectInfo } from '../lib/content/generic/ytdlp.js'
 import { cvidOf, exactIdOf, initialStateOf, projectArticle, renderContent } from '../lib/content/bilibili/article.js'
+import { cookieHeaderFor, parseNetscape, withCookie } from '../lib/content/cookies.js'
+import { CREDENTIAL_USE, usesCredentials } from '../lib/content/contract.js'
 import { renderMetadata } from '../lib/index.js'
 
 const checks = []
@@ -459,6 +461,104 @@ await check('projectArticle: opus kind uses opus_id, not cvid', () => {
 
 await check('projectArticle: a page without detail.modules is refused, not silently empty', () => {
   assert.throws(() => projectArticle({ id: 1 }, 'https://x', 'article'), /no detail\.modules/)
+})
+
+
+// ── credentials reach every extractor that benefits ─────────────────────────
+
+await check('usesCredentials: enhances counts, not just required', () => {
+  // The regression this guards: a boolean "needs login" made enhances look
+  // credential-free, so a stored bilibili jar was dropped and video stayed 360p.
+  assert.ok(usesCredentials('required'))
+  assert.ok(usesCredentials('enhances'))
+  assert.ok(!usesCredentials('none'))
+})
+
+await check('every extractor declares a valid credentials value', () => {
+  for (const row of listExtractors()) {
+    assert.ok(CREDENTIAL_USE.includes(row.credentials), `${row.id}: ${row.credentials}`)
+  }
+  // The public replay CDN must NOT receive cookies.
+  assert.equal(extractorOf('astralparty.replay').credentials, 'none')
+  // Everything that can benefit must be wired to use them.
+  for (const id of ['bilibili.video', 'bilibili.article', 'bilibili.opus', 'wmpvp.video', 'wmpvp.note', 'generic.file', 'generic.ytdlp']) {
+    assert.equal(extractorOf(id).credentials, 'enhances', id)
+  }
+})
+
+await check('extract: an enhances extractor really rotates stored accounts', async () => {
+  // Drive the REAL registry path. generic.file is `enhances`; point it at a
+  // host that refuses instantly so each attempt fails fast, and count how many
+  // times the credential layer is asked to materialize a jar. Before the fix
+  // this was zero (one anonymous attempt) because enhances looked login-free.
+  const asked = []
+  await assert.rejects(() => extract({
+    input: { url: 'http://127.0.0.1:1/x.zip', extractor: 'generic.file' },
+    outDir: mkdtempSync(join(tmpdir(), 'cred-rot-')),
+    accounts: [{ id: 'acct-one' }, { id: 'acct-two' }],
+    materialize: async (id) => { asked.push(id); return '' },
+    timeoutMs: 8000,
+  }))
+  assert.deepEqual(asked, ['acct-one', 'acct-two'], 'both accounts must be tried in order')
+})
+
+await check('extract: a none extractor never asks for credentials', async () => {
+  const asked = []
+  await assert.rejects(() => extract({
+    input: { id: '0000000000000000', extractor: 'astralparty.replay' },
+    outDir: mkdtempSync(join(tmpdir(), 'cred-none-')),
+    accounts: [{ id: 'acct-one' }],
+    materialize: async (id) => { asked.push(id); return '' },
+    timeoutMs: 8000,
+  }))
+  assert.deepEqual(asked, [], 'a public CDN must not receive cookies')
+})
+
+// ── Netscape jar → Cookie header ────────────────────────────────────────────
+
+const JAR = [
+  '# Netscape HTTP Cookie File',
+  '.bilibili.com\tTRUE\t/\tFALSE\t0\tSESSDATA\tsecret-value',
+  '.bilibili.com\tTRUE\t/\tTRUE\t0\tbili_jct\tcsrf',
+  'passport.bilibili.com\tFALSE\t/\tFALSE\t0\tDedeUserID\t42',
+  '.other.com\tTRUE\t/\tFALSE\t0\tOTHER\tnot-for-bilibili',
+  '.bilibili.com\tTRUE\t/\tFALSE\t1\tEXPIRED\tgone',
+].join('\n')
+
+await check('parseNetscape: skips comments/short rows, keeps tab-bearing values', () => {
+  const rows = parseNetscape(JAR)
+  assert.equal(rows.length, 5)
+  assert.equal(rows[0].name, 'SESSDATA')
+  assert.equal(rows[1].secure, true)
+})
+
+await check('cookieHeaderFor: domain-scoped, no cross-site leakage', () => {
+  const header = cookieHeaderFor(JAR, 'https://www.bilibili.com/video/BV1')
+  assert.match(header, /SESSDATA=secret-value/)
+  assert.match(header, /bili_jct=csrf/)
+  // Exact-host row must not apply to www.bilibili.com.
+  assert.ok(!header.includes('DedeUserID'), 'exact-host cookie leaked to a subdomain')
+  // Another site's cookie must never ride along.
+  assert.ok(!header.includes('OTHER'), 'cross-site cookie leaked')
+  // Expired row dropped.
+  assert.ok(!header.includes('EXPIRED'))
+})
+
+await check('cookieHeaderFor: secure rows only over https, exact host matches itself', () => {
+  assert.ok(!cookieHeaderFor(JAR, 'http://www.bilibili.com/x').includes('bili_jct'))
+  assert.match(cookieHeaderFor(JAR, 'https://passport.bilibili.com/login'), /DedeUserID=42/)
+})
+
+await check('cookieHeaderFor: path scope respected; bad url yields empty', () => {
+  const scoped = '.x.com\tTRUE\t/private\tFALSE\t0\tA\t1'
+  assert.match(cookieHeaderFor(scoped, 'https://x.com/private/a'), /A=1/)
+  assert.equal(cookieHeaderFor(scoped, 'https://x.com/public'), '')
+  assert.equal(cookieHeaderFor(JAR, 'not a url'), '')
+})
+
+await check('withCookie: no empty header when anonymous', () => {
+  assert.deepEqual(withCookie({ a: '1' }, ''), { a: '1' })
+  assert.deepEqual(withCookie({ a: '1' }, 'k=v'), { a: '1', cookie: 'k=v' })
 })
 
 console.log(checks.join('\n'))

@@ -65,12 +65,45 @@ impl ContentKind {
     }
 }
 
+/// Whether a credential is required, optional-but-useful, or useless.
+///
+/// This is deliberately three-valued. A boolean "needs login" conflated two
+/// different questions and lost the important middle case: bilibili serves a
+/// video anonymously at 360p and the same URL at 1080p+ with cookies, so login
+/// is not *required* yet it is exactly what a user wants applied. Collapsing
+/// that to `false` silently dropped stored credentials on the floor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialUse {
+    /// Extraction fails without a credential (members-only, paid, private).
+    Required,
+    /// Works anonymously, but a credential improves the result: higher quality,
+    /// full text instead of a teaser, more items, or simply fewer blocks.
+    /// **Stored cookies must still be sent.**
+    Enhances,
+    /// The resource is public and ignores credentials (a public CDN file).
+    /// Sending cookies would be pointless — and leaks them to a third party.
+    None,
+}
+
+impl CredentialUse {
+    /// Should a stored credential be attached when one exists?
+    ///
+    /// True for both `Required` and `Enhances`: the whole point of the account
+    /// pool is that a logged-in jar gets used wherever it helps, not only where
+    /// it is mandatory.
+    #[must_use]
+    pub fn uses_credentials(self) -> bool {
+        !matches!(self, Self::None)
+    }
+}
+
 /// One extractor a platform advertises.
 ///
 /// `id` is globally unique and is what a caller passes to select it. `patterns`
 /// are URL substrings/regex-free hints used only to *suggest* this extractor;
-/// they never decide. `requires_login` tells a host whether credentials are
-/// needed before extraction will succeed.
+/// they never decide. `credentials` tells a host whether to attach the
+/// platform's stored cookie jar — see [`CredentialUse`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractorInfo {
     /// Globally unique extractor id, e.g. `bilibili.video`, `bilibili.article`.
@@ -84,8 +117,8 @@ pub struct ExtractorInfo {
     /// URL fragments that suggest this extractor (host + path shape).
     /// Advisory only — see the module docs.
     pub patterns: Vec<&'static str>,
-    /// Whether a logged-in credential is normally required.
-    pub requires_login: bool,
+    /// How a credential affects this extractor.
+    pub credentials: CredentialUse,
     /// Metadata keys this extractor is known to emit, beyond the common set.
     /// Documentation for callers; the actual metadata map stays open.
     pub metadata_keys: Vec<&'static str>,
@@ -100,9 +133,15 @@ impl ExtractorInfo {
         label: &'static str,
         kind: ContentKind,
         patterns: Vec<&'static str>,
-        requires_login: bool,
+        credentials: CredentialUse,
     ) -> Self {
-        Self { id, platform, label, kind, patterns, requires_login, metadata_keys: Vec::new() }
+        Self { id, platform, label, kind, patterns, credentials, metadata_keys: Vec::new() }
+    }
+
+    /// Should the platform's stored cookie jar be attached when one exists?
+    #[must_use]
+    pub fn uses_credentials(&self) -> bool {
+        self.credentials.uses_credentials()
     }
 
     /// Declare the platform-specific metadata keys this extractor emits.
@@ -130,5 +169,50 @@ impl ExtractorInfo {
     #[must_use]
     pub fn specificity(&self) -> usize {
         self.patterns.iter().map(|p| p.len()).sum()
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enhances_and_required_both_attach_credentials() {
+        // The bug this type exists to prevent: a boolean "needs login" made an
+        // Enhances extractor look credential-free, so stored cookies were
+        // dropped and a bilibili video stayed at 360p.
+        assert!(CredentialUse::Required.uses_credentials());
+        assert!(CredentialUse::Enhances.uses_credentials());
+        assert!(!CredentialUse::None.uses_credentials());
+    }
+
+    #[test]
+    fn the_wire_shape_is_a_stable_snake_case_string() {
+        let info = ExtractorInfo::new(
+            "x.video",
+            "x",
+            "video",
+            ContentKind::Video,
+            vec!["x.com/v/"],
+            CredentialUse::Enhances,
+        );
+        let json = serde_json::to_value(&info).unwrap();
+        assert_eq!(json["credentials"], serde_json::json!("enhances"));
+        assert!(json.get("requires_login").is_none(), "the old boolean is gone");
+        assert!(info.uses_credentials());
+    }
+
+    #[test]
+    fn specificity_ranks_by_total_pattern_length() {
+        let site = ExtractorInfo::new(
+            "x.article", "x", "a", ContentKind::Article,
+            vec!["x.com/read/"], CredentialUse::Enhances,
+        );
+        let catch_all = ExtractorInfo::new(
+            "generic.any", "generic", "any", ContentKind::Video,
+            vec!["http"], CredentialUse::None,
+        );
+        assert!(site.specificity() > catch_all.specificity());
+        assert!(site.suggests("https://x.com/read/cv1"));
+        assert!(!site.suggests("https://x.com/video/BV1"));
     }
 }

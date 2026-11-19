@@ -32,7 +32,7 @@ use extract_core::provider::{ state_of,
     data_of, harvest, jar_header, jar_of, merge_jar, message_of, require_method, state_str,
     Challenge, CheckOutcome, Poll, Provider,
 };
-use extract_core::content::{ContentKind, ExtractorInfo};
+use extract_core::content::{ContentKind, CredentialUse, ExtractorInfo};
 use extract_core::ambient::Ambient;
 use extract_core::cookies;
 use extract_core::error::{Error, Result};
@@ -49,6 +49,11 @@ pub struct Douyin;
 
 impl Douyin {
     /// Construct a boxed provider for the registry.
+    ///
+    /// Returns `Arc<dyn Provider>` rather than `Self` on purpose: the
+    /// registry stores trait objects, so every platform hands back the same
+    /// erased type and the composition root needs no per-platform generics.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Arc<dyn Provider> {
         Arc::new(Self)
     }
@@ -69,7 +74,7 @@ impl Provider for Douyin {
                 "抖音视频",
                 ContentKind::Video,
                 vec!["douyin.com/video/"],
-                false,
+                CredentialUse::Enhances,
             )
             .with_metadata_keys(vec!["aweme_id", "author_sec_uid", "digg_count"]),
             ExtractorInfo::new(
@@ -78,7 +83,7 @@ impl Provider for Douyin {
                 "抖音图文",
                 ContentKind::Post,
                 vec!["douyin.com/note/"],
-                false,
+                CredentialUse::Enhances,
             )
             .with_metadata_keys(vec!["aweme_id", "images", "text"]),
             ExtractorInfo::new(
@@ -87,7 +92,7 @@ impl Provider for Douyin {
                 "抖音分享短链",
                 ContentKind::Video,
                 vec!["iesdouyin.com/share/"],
-                false,
+                CredentialUse::Enhances,
             ),
         ]
     }

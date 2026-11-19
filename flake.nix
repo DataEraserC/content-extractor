@@ -130,7 +130,14 @@
 
               src = ./hosts/dsh;
 
-              npmDepsHash = "sha256-XGaMRfO+3cOmDYwNloTjuc3jycxquxnfsqKTP5mXfAo=";
+              # NOTE: a flake source is the git *index*, not the working tree.
+              # A brand-new file that has not been `git add`ed is invisible here,
+              # so the build succeeds while shipping a broken package (this
+              # actually happened: lib/content/cookies.js was missing from the
+              # output until it was staged). Stage new files before building, and
+              # check the output contains them — a green build is not proof.
+
+              npmDepsHash = "sha256-+pcztd2YUFTHxcy+Lo/gJ/bidN84tjCqhF7XwCQJNWY=";
 
               # The plugin ships prebuilt JS (no bundler step).
               dontNpmBuild = true;

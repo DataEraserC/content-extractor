@@ -343,7 +343,7 @@ export const astralReplay = {
   label: '吉星派对对局回放文件',
   kind: 'replay',
   patterns: ['feimogames.com/prod/'],
-  requiresLogin: false,
+  credentials: 'none',
   metadataKeys: [
     'region', 'room_id', 'room_name', 'map_id', 'map_name', 'mode',
     'round', 'state', 'frame_count', 'started_at', 'players',

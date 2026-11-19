@@ -22,7 +22,7 @@
 //       kind:     'article',            // video|audio|article|post|gallery|
 //                                       // live|replay|file|…
 //       patterns: ['bilibili.com/read/'],  // advisory URL hints
-//       requiresLogin: false,
+//       credentials: 'enhances',        // required | enhances | none
 //       metadataKeys: [...],            // documented extras; map stays open
 //       extract(input, opts): Promise<ExtractResult>,
 //     }
@@ -53,6 +53,32 @@
 export const CONTENT_KINDS = Object.freeze([
   'video', 'audio', 'article', 'post', 'gallery', 'live', 'replay', 'file',
 ])
+
+/**
+ * How a credential affects an extractor — three-valued on purpose.
+ *
+ * A boolean "needs login" conflated two questions and lost the important middle
+ * case: bilibili serves a video anonymously at 360p and the same URL at 1080p+
+ * with cookies. Login is not *required*, yet applying it is exactly what the
+ * user wants. Collapsing that to `false` silently dropped stored credentials.
+ *
+ *   required — extraction fails without a credential (members-only, paid)
+ *   enhances — works anonymously, but a credential improves the result
+ *              (quality, full text, more items, fewer blocks). SEND COOKIES.
+ *   none     — public resource that ignores credentials; sending them would
+ *              only leak them to a third party.
+ */
+export const CREDENTIAL_USE = Object.freeze(['required', 'enhances', 'none'])
+
+/**
+ * Should a stored credential be attached when one exists?
+ * True for both `required` and `enhances` — that is the whole point of the pool.
+ * @param {string} use - one of CREDENTIAL_USE.
+ * @returns {boolean}
+ */
+export function usesCredentials(use) {
+  return use === 'required' || use === 'enhances'
+}
 
 /**
  * How specific an extractor's patterns are, for ranking candidates.
@@ -111,5 +137,11 @@ export function assertExtractor(extractor) {
   }
   if (!extractor.id.includes('.')) {
     throw new Error(`extractor ${where}: id must be "<platform>.<name>"`)
+  }
+  if (!CREDENTIAL_USE.includes(extractor.credentials)) {
+    throw new Error(
+      `extractor ${where}: "credentials" must be one of ${CREDENTIAL_USE.join(', ')} ` +
+      `(got ${JSON.stringify(extractor.credentials)})`,
+    )
   }
 }

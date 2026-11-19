@@ -12,6 +12,7 @@
 
 import { writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
+import { cookieHeaderFrom, withCookie } from '../cookies.js'
 
 /** Extensions we treat as direct files when routing. */
 const FILE_RE = /\.(mp4|mkv|webm|mov|avi|flv|ts|m3u8|mpd|mp3|m4a|flac|wav|ogg|jpg|jpeg|png|gif|webp|zip|pdf)(\?|#|$)/i
@@ -52,7 +53,7 @@ export const genericFile = {
   label: '直链文件',
   kind: 'file',
   patterns: ['http'],
-  requiresLogin: false,
+  credentials: 'enhances',
   metadataKeys: ['content_type', 'bytes'],
 
   /**
@@ -75,13 +76,18 @@ export const genericFile = {
    * @param {object} opts - generic extract options.
    * @returns {Promise<object>} FetchResult.
    */
-  async extract(input, { outDir, timeoutMs }) {
+  async extract(input, { outDir, timeoutMs, cookiesPath = '' }) {
     const url = String(input.url ?? '')
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     let response
     try {
-      response = await fetch(url, { signal: controller.signal, headers: { 'user-agent': 'Mozilla/5.0' } })
+      // A direct link can sit behind auth (a private release asset, a
+      // members-only file), so a stored jar is attached when one exists.
+      response = await fetch(url, {
+        signal: controller.signal,
+        headers: withCookie({ 'user-agent': 'Mozilla/5.0' }, cookieHeaderFrom(cookiesPath, url)),
+      })
     } catch (error) {
       throw new Error(`file download failed (${url.slice(0, 120)}): ${error.message}`)
     } finally {
