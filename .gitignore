@@ -5,3 +5,8 @@
 /cookies/
 /accounts/
 /sessions/
+
+# Agent/tooling scratch: build logs, downloaded samples, QA output. Never state
+# the plugin owns — that lives under $EXTRACT_HOME or the harness's own home.
+.box-agent/
+.box-agent-scratch/

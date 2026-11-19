@@ -1,0 +1,12 @@
+[package]
+name = "extract-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Harness-independent content-extraction kernel: provider contract, credentials, cookie codec, account pool"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }

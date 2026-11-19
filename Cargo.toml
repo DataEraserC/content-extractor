@@ -1,9 +1,34 @@
 [workspace]
-members = ["crates/vlogin-core", "crates/vlogin-abi", "crates/vlogin-cli"]
+members = [
+    "crates/extract-core",
+    "crates/platform-bilibili",
+    "crates/platform-youtube",
+    "crates/platform-douyin",
+    "crates/platform-tencent",
+    "crates/platform-iqiyi",
+    "crates/platform-youku",
+    "crates/platform-generic",
+    "crates/platform-wmpvp",
+    "crates/platform-astralparty",
+    "crates/extract-abi",
+    "crates/extract-cli",
+]
 resolver = "2"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/DataEraserC/video-login"
+repository = "https://github.com/DataEraserC/content-extract"
+
+[workspace.dependencies]
+extract-core = { path = "crates/extract-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Blocking client with rustls: no openssl, and `redirect(Policy::none())` so
+# providers can harvest cookies that live on a redirect hop.
+reqwest = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "json",
+    "rustls-tls",
+] }

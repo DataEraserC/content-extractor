@@ -1,0 +1,11 @@
+[package]
+name = "platform-douyin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "douyin platform: login methods and content extractors"
+
+[dependencies]
+extract-core = { workspace = true }
+serde_json = { workspace = true }

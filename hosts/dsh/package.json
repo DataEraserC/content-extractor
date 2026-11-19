@@ -1,7 +1,7 @@
 {
-  "name": "dsh-video-fetch",
-  "version": "0.5.0",
-  "description": "Video downloading for DeepSeek Harness: yt-dlp with bilibili QR login for logged-in quality, plus optional ffmpeg compression to QQ-size",
+  "name": "dsh-content-extract",
+  "version": "0.6.0",
+  "description": "Content extraction for DeepSeek Harness: per-platform extractors (video, article, post, replay, file) with an open metadata map, explicit extractor selection, and optional ffmpeg compression",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -41,15 +41,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DataEraserC/dsh-video-fetch.git"
+    "url": "git+https://github.com/DataEraserC/content-extract.git"
   },
   "keywords": [
     "dsh",
     "deepseek-harness",
     "cordis",
-    "plugin",
+    "content-extraction",
     "yt-dlp",
-    "video"
+    "bilibili",
+    "article"
   ],
   "author": "DataEraserC",
   "license": "MIT",

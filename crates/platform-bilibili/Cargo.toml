@@ -1,0 +1,13 @@
+[package]
+name = "platform-bilibili"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "bilibili: login methods and content extractors (video, article, opus, audio, live)"
+
+[dependencies]
+extract-core = { workspace = true }
+serde_json = { workspace = true }
+# Password login only: RSA-PKCS#1 v1.5 over salt+password.
+rsa = { version = "0.9", features = ["pem"] }

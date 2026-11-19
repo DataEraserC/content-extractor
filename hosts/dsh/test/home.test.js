@@ -1,10 +1,10 @@
-// Where video-fetch state lands, and who decides.
+// Where content-extract state lands, and who decides.
 //
 // The login library is harness-independent: it resolves its root from
-// VLOGIN_HOME, then XDG, and it must never learn that DSH_HOME exists — a
+// EXTRACT_HOME, then XDG, and it must never learn that DSH_HOME exists — a
 // fallback there would be inherited by every other caller that happens to run
 // with the variable set. So the dsh location belongs to this plugin, which
-// exports it into VLOGIN_HOME.
+// exports it into EXTRACT_HOME.
 //
 // These checks assert the file lands in the right directory on both sides of
 // that seam, which is the only way to know the setting really reaches Rust: a
@@ -52,8 +52,8 @@ const dshHome = tempIn(scratch)
 const plainHome = tempIn(scratch)
 const xdgData = join(plainHome, 'xdg')
 
-const dshAccounts = join(dshHome, 'video-fetch', 'accounts', 'bilibili.json')
-const plainAccounts = join(xdgData, 'video-login', 'accounts', 'bilibili.json')
+const dshAccounts = join(dshHome, 'content-extract', 'accounts', 'bilibili.json')
+const plainAccounts = join(xdgData, 'content-extract', 'accounts', 'bilibili.json')
 
 // ── the harness names a home ────────────────────────────────────────────────
 
@@ -66,24 +66,25 @@ if (!status.available) {
   process.exit(0)
 }
 
-await check('with DSH_HOME set, accounts land in the dsh video-fetch directory', async () => {
-  await withHome.call('import', { channel: 'bilibili', cookies: JAR, label: 'probe' })
-  assert.equal(process.env.VLOGIN_HOME, join(dshHome, 'video-fetch'))
+await check('with DSH_HOME set, accounts land in the dsh content-extract directory', async () => {
+  await withHome.call('import', { platform: 'bilibili', cookies: JAR, label: 'probe' })
+  assert.equal(process.env.EXTRACT_HOME, join(dshHome, 'content-extract'))
   assert.ok(existsSync(dshAccounts), `the account file is at ${dshAccounts}`)
 })
 
 // ── the harness names none ──────────────────────────────────────────────────
 
 delete process.env.DSH_HOME
+delete process.env.EXTRACT_HOME
 delete process.env.VLOGIN_HOME
 process.env.HOME = plainHome
 process.env.XDG_DATA_HOME = xdgData
 const noHome = await loadNative('no-dsh-home')
 
 await check('with no DSH_HOME, the library uses its own default', async () => {
-  await noHome.call('import', { channel: 'bilibili', cookies: JAR, label: 'probe' })
+  await noHome.call('import', { platform: 'bilibili', cookies: JAR, label: 'probe' })
   assert.equal(
-    process.env.VLOGIN_HOME,
+    process.env.EXTRACT_HOME,
     undefined,
     'the adapter stays silent instead of inventing a dsh path',
   )

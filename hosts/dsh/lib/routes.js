@@ -2,8 +2,8 @@
 // the official `plugins.row.config` form (no route needed), while login and the
 // QR image need their own endpoints because they are not configuration.
 //
-// Two carriers, same handlers: the browser reaches them as /video-fetch/* on
-// the web host, and as /api/video-fetch/* through the desktop connection.
+// Two carriers, same handlers: the browser reaches them as /content-extract/*
+// on the web host, and as /api/content-extract/* through the desktop connection.
 //
 // ## What changed
 //
@@ -29,6 +29,7 @@
 import QRCode from 'qrcode'
 
 import { call, nativeStatus } from './native.js'
+import { candidates, listExtractors } from './content/registry.js'
 import { EDITABLE, EDITABLE_KEYS, applyPatch, coercePatch, plain, resetFields, snapshot } from './settings.js'
 
 /** Longest QR payload we will rasterise, so a hostile URL cannot make us churn. */
@@ -107,7 +108,7 @@ export function buildRoutes(ctx, config) {
     // A missing library must not blank the whole page: settings still render,
     // and the login card explains why it cannot be used.
     if (!native.available) {
-      json(res, 200, { settings: snapshot(config), fields: fieldTable(), channels: [], native })
+      json(res, 200, { settings: snapshot(config), fields: fieldTable(), channels: [], extractors: listExtractors(), native })
       return
     }
     try {
@@ -116,7 +117,7 @@ export function buildRoutes(ctx, config) {
       fail(res, error, 'status')
       return
     }
-    json(res, 200, { settings: snapshot(config), fields: fieldTable(), channels, native })
+    json(res, 200, { settings: snapshot(config), fields: fieldTable(), channels, extractors: listExtractors(), native })
   }
 
   const setHandler = async (req, res) => {
@@ -146,19 +147,28 @@ export function buildRoutes(ctx, config) {
   /**
    * One channel's pool. `channel` is optional; without it the caller gets the
    * first advertised channel, which is what a page asks for before the user has
-   * picked anything.
+   * picked anything. A missing native library is offline-safe: an empty pool,
+   * not a 503 — the page renders "no accounts" and the state route explains why.
    */
   const loginStatus = async (req, res) => {
     const url = new URL(String(req.url ?? '/'), 'http://localhost')
-    const channel = url.searchParams.get('channel')
+    const channel = url.searchParams.get('platform') ?? url.searchParams.get('channel')
+    if (!nativeStatus().available) {
+      if (channel !== null) {
+        json(res, 400, { ok: false, error: `unknown channel "${channel}" (login backend unavailable)` })
+        return
+      }
+      json(res, 200, { ok: true, platform: null, channel: null, accounts: [], active: null, extractors: [] })
+      return
+    }
     try {
       const all = (await call('status')) ?? []
-      const found = channel === null ? all[0] : all.find((entry) => entry.channel.id === channel)
+      const found = channel === null ? all[0] : all.find((entry) => (entry.platform ?? entry.channel).id === channel)
       if (!found) {
         json(res, 400, { ok: false, error: `unknown channel "${channel}"` })
         return
       }
-      json(res, 200, { ok: true, channel: found.channel, accounts: found.accounts, active: found.active })
+      json(res, 200, { ok: true, platform: found.platform ?? found.channel, channel: found.platform ?? found.channel, accounts: found.accounts, active: found.active, extractors: found.extractors ?? [] })
     } catch (error) {
       fail(res, error, 'status')
     }
@@ -172,7 +182,7 @@ export function buildRoutes(ctx, config) {
     try {
       const body = await jsonBody(req)
       const result = await call('start', {
-        channel: String(body.channel ?? ''),
+        platform: String(body.platform ?? body.channel ?? ''),
         method: String(body.method ?? 'qr'),
         params: body.params ?? {},
         label: body.label === undefined ? null : String(body.label),
@@ -187,7 +197,7 @@ export function buildRoutes(ctx, config) {
   const loginBrowse = async (req, res) => {
     try {
       const body = await jsonBody(req)
-      const result = await call('browse', { channel: String(body.channel ?? '') })
+      const result = await call('browse', { platform: String(body.platform ?? body.channel ?? '') })
       json(res, 200, { ok: true, ...result })
     } catch (error) {
       fail(res, error, 'browse')
@@ -232,7 +242,7 @@ export function buildRoutes(ctx, config) {
         throw Object.assign(new Error('cookies too large (max 512 KB)'), { code: 'bad_request' })
       }
       const account = await call('import', {
-        channel: String(body.channel ?? ''),
+        platform: String(body.platform ?? body.channel ?? ''),
         method: 'manual',
         cookies: text,
         label: String(body.label ?? ''),
@@ -248,7 +258,7 @@ export function buildRoutes(ctx, config) {
     try {
       const body = await jsonBody(req)
       const account = await call('pin', {
-        channel: String(body.channel ?? ''),
+        platform: String(body.platform ?? body.channel ?? ''),
         account: String(body.account ?? ''),
       })
       json(res, 200, { ok: true, account })
@@ -262,7 +272,7 @@ export function buildRoutes(ctx, config) {
     try {
       const body = await jsonBody(req)
       const removed = await call('logout', {
-        channel: String(body.channel ?? ''),
+        platform: String(body.platform ?? body.channel ?? ''),
         account: String(body.account ?? ''),
       })
       json(res, 200, { ok: true, removed })
@@ -276,7 +286,7 @@ export function buildRoutes(ctx, config) {
     try {
       const body = await jsonBody(req)
       const account = await call('check', {
-        channel: String(body.channel ?? ''),
+        platform: String(body.platform ?? body.channel ?? ''),
         account: body.account === undefined ? null : String(body.account),
       })
       json(res, 200, { ok: true, account })
@@ -319,21 +329,46 @@ export function buildRoutes(ctx, config) {
     }
   }
 
+  /**
+   * The registered content extractors — what `content_extract` can handle.
+   * Pure registry read; no native library needed.
+   */
+  const extractorsHandler = async (_req, res) => {
+    json(res, 200, { ok: true, extractors: listExtractors() })
+  }
+
+  /**
+   * Who COULD handle a URL/id — plural and advisory. The page shows the list
+   * and the user picks; nothing here selects.
+   */
+  const candidatesHandler = async (req, res) => {
+    const url = new URL(String(req.url ?? '/'), 'http://localhost')
+    const target = url.searchParams.get('url') ?? ''
+    const id = url.searchParams.get('id') ?? ''
+    if (target === '' && id === '') {
+      json(res, 400, { ok: false, error: 'candidates needs a url or an id' })
+      return
+    }
+    json(res, 200, { ok: true, candidates: candidates({ url: target || undefined, id: id || undefined }) })
+  }
+
   return [
-    { path: '/video-fetch/state', handler: stateHandler },
-    { path: '/video-fetch/set', handler: setHandler },
-    { path: '/video-fetch/reset', handler: resetHandler },
-    { path: '/video-fetch/login/status', handler: loginStatus },
-    { path: '/video-fetch/login/start', handler: loginStart },
-    { path: '/video-fetch/login/browse', handler: loginBrowse },
-    { path: '/video-fetch/login/poll', handler: loginPoll },
-    { path: '/video-fetch/login/submit', handler: loginSubmit },
-    { path: '/video-fetch/login/import', handler: loginImport },
-    { path: '/video-fetch/login/pin', handler: loginPin },
-    { path: '/video-fetch/login/logout', handler: loginLogout },
-    { path: '/video-fetch/login/check', handler: loginCheck },
-    { path: '/video-fetch/login/cancel', handler: loginCancel },
-    { path: '/video-fetch/challenge', handler: challengeImage },
+    { path: '/content-extract/state', handler: stateHandler },
+    { path: '/content-extract/set', handler: setHandler },
+    { path: '/content-extract/reset', handler: resetHandler },
+    { path: '/content-extract/extractors', handler: extractorsHandler },
+    { path: '/content-extract/candidates', handler: candidatesHandler },
+    { path: '/content-extract/login/status', handler: loginStatus },
+    { path: '/content-extract/login/start', handler: loginStart },
+    { path: '/content-extract/login/browse', handler: loginBrowse },
+    { path: '/content-extract/login/poll', handler: loginPoll },
+    { path: '/content-extract/login/submit', handler: loginSubmit },
+    { path: '/content-extract/login/import', handler: loginImport },
+    { path: '/content-extract/login/pin', handler: loginPin },
+    { path: '/content-extract/login/logout', handler: loginLogout },
+    { path: '/content-extract/login/check', handler: loginCheck },
+    { path: '/content-extract/login/cancel', handler: loginCancel },
+    { path: '/content-extract/challenge', handler: challengeImage },
   ]
 }
 

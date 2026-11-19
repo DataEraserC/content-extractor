@@ -7,7 +7,7 @@
 //     the client half declares `platform: "web"`.
 //   * the model-facing tools — `video_settings` / `video_login`. Something the
 //     model calls, not something the user types.
-//   * these two commands — `/video-settings` and `/video-login`, dispatched by
+//   * these two commands — `/content-settings` and `/content-login`, dispatched by
 //     whatever interactive UI adapter the user is in: the web composer and the
 //     TUI both merge the kernel's `@deepseek-ai/dsh-commands` registry into
 //     their slash menu and dispatch through it.
@@ -30,9 +30,10 @@
 
 import { call, nativeStatus } from './native.js'
 import { EDITABLE_KEYS, applyPatch, coercePatch, resetFields, snapshot } from './settings.js'
+import { candidates, listExtractors } from './content/registry.js'
 
 /** Command names, without the leading slash. */
-export const COMMAND_NAMES = Object.freeze(['video-settings', 'video-login'])
+export const COMMAND_NAMES = Object.freeze(['content-settings', 'content-login'])
 
 /**
  * Reach the command registry, or undefined in a composition without it.
@@ -73,7 +74,7 @@ function ok(text) {
  * @returns {string[]} lines.
  */
 function channelLines(entry, verbose) {
-  const channel = entry.channel ?? {}
+  const channel = entry.platform ?? entry.channel ?? {}
   const accounts = entry.accounts ?? []
   const head = `${channel.id} (${channel.name ?? channel.id}) — ${accounts.length} account(s)`
   if (accounts.length === 0) return [`${head}, none stored`]
@@ -89,7 +90,7 @@ function channelLines(entry, verbose) {
 }
 
 /**
- * Register `/video-settings` and `/video-login`.
+ * Register `/content-settings` and `/content-login`.
  *
  * Returns the number of commands registered so the caller can log or assert on
  * it; both handlers are safe to call from any UI adapter.
@@ -112,8 +113,8 @@ export function registerCommands(ctx, config) {
       // A plain string is what `CommandDefinitionId()` returns at runtime; the
       // brand is type-only, and importing it would add a peer dependency for
       // an identity function.
-      definitionId: 'dsh-video-fetch/settings',
-      name: 'video-settings',
+      definitionId: 'dsh-content-extract/settings',
+      name: 'content-settings',
       description: 'View or change the video download settings',
       input: { hint: '[<field>=<value> … | reset [<field> …]]' },
       async handler(invocation) {
@@ -125,7 +126,7 @@ export function registerCommands(ctx, config) {
             [
               'Video settings (live values):',
               ...EDITABLE_KEYS.map((key) => `  ${key} = ${JSON.stringify(current[key])}`),
-              `Change one with /video-settings ${EDITABLE_KEYS[0]}=…; drop an override with /video-settings reset <field>.`,
+              `Change one with /content-settings ${EDITABLE_KEYS[0]}=…; drop an override with /content-settings reset <field>.`,
             ].join('\n'),
           )
         }
@@ -169,10 +170,10 @@ export function registerCommands(ctx, config) {
     }),
 
     registry.register({
-      definitionId: 'dsh-video-fetch/login',
-      name: 'video-login',
+      definitionId: 'dsh-content-extract/login',
+      name: 'content-login',
       description: 'Video site login: view accounts, start a login, confirm it',
-      input: { hint: '[status [<channel>] | channels | start <channel> [<method>] | poll | cancel | pin <channel> <account> | logout <channel> <account> | check [<channel>]]' },
+      input: { hint: '[status [<platform>] | platforms | extractors | candidates <url> | start <channel> [<method>] | poll | cancel | pin <channel> <account> | logout <channel> <account> | check [<channel>]]' },
       async handler(invocation) {
         const native = nativeStatus()
         if (!native.available) return failure(`the login backend is unavailable: ${native.error}`)
@@ -181,8 +182,8 @@ export function registerCommands(ctx, config) {
         const verb = args.length === 0 ? 'status' : args[0]
 
         try {
-          if (verb === 'channels') {
-            const channels = (await call('channels')) ?? []
+          if (verb === 'platforms' || verb === 'channels') {
+            const channels = (await call('platforms')) ?? []
             return ok(
               channels
                 .map((entry) => {
@@ -193,19 +194,32 @@ export function registerCommands(ctx, config) {
             )
           }
 
+          if (verb === 'extractors') {
+            const rows = listExtractors()
+            return ok(rows.map((row) => `${row.id} (${row.label}) — ${row.kind}`).join('\n'))
+          }
+
+          if (verb === 'candidates') {
+            const target = args[1]
+            if (target === undefined) return failure('candidates needs a url or id: /content-login candidates <url>')
+            const found = candidates({ url: target, id: target })
+            if (found.length === 0) return ok('no extractor advertises this input')
+            return ok(found.map((entry) => `${entry.extractor.id} — ${entry.extractor.label} [${entry.extractor.kind}]`).join('\n'))
+          }
+
           if (verb === 'status') {
             const all = (await call('status')) ?? []
             const channel = args[1]
-            const rows = channel === undefined ? all : all.filter((entry) => entry.channel?.id === channel)
+            const rows = channel === undefined ? all : all.filter((entry) => (entry.platform ?? entry.channel)?.id === channel)
             if (rows.length === 0) return failure(`no such channel: ${channel}`)
             return ok(rows.map((entry) => channelLines(entry, true).join('\n')).join('\n'))
           }
 
           if (verb === 'start') {
             const channel = args[1]
-            if (channel === undefined) return failure('start needs a channel: /video-login start <channel> [<method>]')
+            if (channel === undefined) return failure('start needs a channel: /content-login start <channel> [<method>]')
             const started = await call('start', {
-              channel,
+              platform: channel,
               method: args[2] ?? 'qr',
               params: {},
               label: null,
@@ -219,19 +233,19 @@ export function registerCommands(ctx, config) {
               // that only hands back an image has no text to show, so say so.
               if (challenge.url) lines.push(`Scan this in the ${channel} app, or open it: ${challenge.url}`)
               else lines.push('This channel returns a QR image rather than a URL — use the web settings page to scan it.')
-              lines.push('After scanning: /video-login poll')
+              lines.push('After scanning: /content-login poll')
             } else if (challenge.kind === 'fields') {
               const names = (challenge.fields ?? []).map((field) => field.name).join(', ')
               lines.push(`${challenge.prompt ?? 'More input is needed:'} ${names}`)
             } else if (challenge.kind === 'browse') {
-              lines.push(challenge.message ?? 'A browser was opened on the server — sign in there, then: /video-login poll')
+              lines.push(challenge.message ?? 'A browser was opened on the server — sign in there, then: /content-login poll')
             }
             return ok(lines.join('\n'))
           }
 
           if (verb === 'poll') {
             const sessionId = args[1] ?? lastSession
-            if (sessionId === '') return failure('nothing to poll — /video-login start <channel> first')
+            if (sessionId === '') return failure('nothing to poll — /content-login start <channel> first')
             const polled = await call('poll', { sessionId })
             const result = polled.result ?? {}
             const account = polled.account ?? null
@@ -266,19 +280,19 @@ export function registerCommands(ctx, config) {
             const channel = args[1]
             const account = args[2]
             if (channel === undefined || account === undefined) {
-              return failure(`${verb} needs a channel and an account: /video-login ${verb} <channel> <account>`)
+              return failure(`${verb} needs a channel and an account: /content-login ${verb} <channel> <account>`)
             }
             if (verb === 'pin') {
-              const view = await call('pin', { channel, account })
+              const view = await call('pin', { platform: channel, account })
               return ok(`Active account for ${channel}: ${view.identity || view.label || view.id}.`)
             }
-            const removed = await call('logout', { channel, account })
+            const removed = await call('logout', { platform: channel, account })
             return ok(removed ? `Account removed from ${channel}.` : `No such account for ${channel}.`)
           }
 
           if (verb === 'check') {
             const view = await call('check', {
-              channel: args[1] ?? '',
+              platform: args[1] ?? '',
               account: args[2] ?? null,
             })
             const who = view.identity || view.label || view.id
@@ -297,7 +311,7 @@ export function registerCommands(ctx, config) {
   ]
 
   if (typeof ctx.effect === 'function') {
-    ctx.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-video-fetch.commands')
+    ctx.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-content-extract.commands')
   }
   return disposers.length
 }

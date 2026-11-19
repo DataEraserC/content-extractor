@@ -1,0 +1,19 @@
+[package]
+name = "extract-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "cx: content extraction and per-platform login from a shell, no harness"
+
+[[bin]]
+name = "cx"
+path = "src/main.rs"
+
+[dependencies]
+# The CLI is a second host of the same effects: state root resolution, the
+# clock, the filesystem and the browser launcher all live in `extract-abi`, and
+# re-implementing them here would defeat the split the kernel is built around.
+extract-abi = { path = "../extract-abi" }
+extract-core = { workspace = true }
+serde_json = { workspace = true }

@@ -1,4 +1,4 @@
-// dsh-video-fetch — client half (browser).
+// dsh-content-extract — client half (browser).
 //
 // One page, mounted twice: as the configure card on the official Plugins page
 // (`plugins.row.config`, keyed by bundle#rowId) and as a tab in Settings →
@@ -11,14 +11,14 @@
 // --dsw-alias-* tokens) — no bundler, no build step.
 
 window.__ModuleLoader__.load({
-  id: 'dsh-video-fetch',
+  id: 'dsh-content-extract',
   factory: (require) => {
     var React = require('react')
     var module = { exports: {} }
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
 
-    var NS = 'dsh-video-fetch'
+    var NS = 'dsh-content-extract'
     var boundTr = null
 
     /** How often the page re-checks a login that is waiting on the user. */
@@ -28,8 +28,8 @@ window.__ModuleLoader__.load({
 
     var L = {
       zh: {
-        'nav': '视频下载',
-        'title': '视频下载设置',
+        'nav': '内容提取',
+        'title': '内容提取设置',
         'intro': '这些设置与会话里的 video_settings 工具写同一份 profile 配置，改完立即对运行中的插件生效。',
         'summary': '下载目录、压缩参数，以及按渠道登录。',
         'loading': '加载中…',
@@ -362,7 +362,7 @@ window.__ModuleLoader__.load({
       pollRef.current = pollOnce
 
       var refresh = React.useCallback(async function () {
-        var next = await api('GET', '/video-fetch/state')
+        var next = await api('GET', '/content-extract/state')
         setState(next)
         setDraft(next.settings || {})
         return next
@@ -399,8 +399,8 @@ window.__ModuleLoader__.load({
       // and the method picker is built from the selected channel's own
       // advertisement so it can only ever offer what that channel implements.
       var chans = (state && state.channels) || []
-      var chan = chans.filter(function (entry) { return entry.channel.id === selChannel })[0] || chans[0] || null
-      var chanInfo = chan ? chan.channel : null
+      var chan = chans.filter(function (entry) { return (entry.platform || entry.channel).id === selChannel })[0] || chans[0] || null
+      var chanInfo = chan ? (chan.platform || chan.channel) : null
       var chanId = chanInfo ? chanInfo.id : ''
       var allMethods = chanInfo ? chanInfo.methods : []
       var liveMethods = allMethods.filter(function (method) { return method.implemented })
@@ -446,7 +446,7 @@ window.__ModuleLoader__.load({
           return
         }
         run(async function () {
-          await api('POST', '/video-fetch/set', { patch: patch })
+          await api('POST', '/content-extract/set', { patch: patch })
           await refresh()
         }, t('saved'))
       }
@@ -454,7 +454,7 @@ window.__ModuleLoader__.load({
       function reset() {
         if (!window.confirm(t('resetHint'))) return
         run(async function () {
-          await api('POST', '/video-fetch/reset', {})
+          await api('POST', '/content-extract/reset', {})
           await refresh()
         }, t('resetDone'))
       }
@@ -515,7 +515,7 @@ window.__ModuleLoader__.load({
        */
       async function pollOnce() {
         if (session === null) return true
-        var next = await api('POST', '/video-fetch/login/poll', { sessionId: session.id })
+        var next = await api('POST', '/content-extract/login/poll', { sessionId: session.id })
         var result = next.result || {}
         if (result.status === 'done') {
           stopPolling()
@@ -567,8 +567,8 @@ window.__ModuleLoader__.load({
         setValues({})
         setNote(null)
         runLogin(async function () {
-          var next = await api('POST', '/video-fetch/login/start', {
-            channel: selChannel,
+          var next = await api('POST', '/content-extract/login/start', {
+            platform: selChannel,
             method: chosen,
             label: labelText,
           })
@@ -590,7 +590,7 @@ window.__ModuleLoader__.load({
         setValues({})
         setNote(null)
         runLogin(async function () {
-          var next = await api('POST', '/video-fetch/login/browse', { channel: selChannel })
+          var next = await api('POST', '/content-extract/login/browse', { platform: selChannel })
           var challenge = next.challenge || {}
           setSession({ id: next.session_id, challenge: challenge })
           setTone('muted', challenge.prompt || t('browseHint'))
@@ -605,7 +605,7 @@ window.__ModuleLoader__.load({
       function submitLogin() {
         if (session === null) return
         runLogin(async function () {
-          var next = await api('POST', '/video-fetch/login/submit', {
+          var next = await api('POST', '/content-extract/login/submit', {
             sessionId: session.id,
             params: values,
           })
@@ -641,8 +641,8 @@ window.__ModuleLoader__.load({
           return
         }
         runLogin(async function () {
-          var next = await api('POST', '/video-fetch/login/import', {
-            channel: selChannel,
+          var next = await api('POST', '/content-extract/login/import', {
+            platform: selChannel,
             cookies: cookieText,
             label: labelText,
           })
@@ -664,14 +664,14 @@ window.__ModuleLoader__.load({
         setValues({})
         setNote(null)
         runLogin(async function () {
-          await api('POST', '/video-fetch/login/cancel', { sessionId: id })
+          await api('POST', '/content-extract/login/cancel', { sessionId: id })
         })
       }
 
       /** @param {string} accountId - account to pin. */
       function pinAccount(accountId) {
         runLogin(async function () {
-          await api('POST', '/video-fetch/login/pin', { channel: selChannel, account: accountId })
+          await api('POST', '/content-extract/login/pin', { platform: selChannel, account: accountId })
           await refresh()
         })
       }
@@ -679,7 +679,7 @@ window.__ModuleLoader__.load({
       /** @param {string} accountId - account to drop. */
       function logoutAccount(accountId) {
         runLogin(async function () {
-          await api('POST', '/video-fetch/login/logout', { channel: selChannel, account: accountId })
+          await api('POST', '/content-extract/login/logout', { platform: selChannel, account: accountId })
           await refresh()
         })
       }
@@ -687,7 +687,7 @@ window.__ModuleLoader__.load({
       /** @param {string} accountId - account to probe. */
       function checkAccount(accountId) {
         runLogin(async function () {
-          var next = await api('POST', '/video-fetch/login/check', { channel: selChannel, account: accountId })
+          var next = await api('POST', '/content-extract/login/check', { platform: selChannel, account: accountId })
           var status = next.account && next.account.status
           setTone(status === 'active' ? 'ok' : 'bad', t('checkResult', { status: status || 'unknown' }))
           await refresh()
@@ -767,7 +767,8 @@ window.__ModuleLoader__.load({
       } else {
         // ── pickers ────────────────────────────────────────────────────
         var channelOptions = chans.map(function (entry) {
-          return { value: entry.channel.id, label: entry.channel.name }
+          var info = entry.platform || entry.channel
+          return { value: info.id, label: info.name }
         })
         var methodSource = methodInfo && !methodInfo.implemented ? [methodInfo] : liveMethods
         var methodOptions = methodSource.map(function (method) {
@@ -832,7 +833,7 @@ window.__ModuleLoader__.load({
         // provider needs no change here.
 
         if (session !== null && session.challenge.kind === 'qr') {
-          var qrSrc = session.challenge.image || (apiPath('/video-fetch/challenge?data=' + encodeURIComponent(session.challenge.url)) + '&t=' + Date.now())
+          var qrSrc = session.challenge.image || (apiPath('/content-extract/challenge?data=' + encodeURIComponent(session.challenge.url)) + '&t=' + Date.now())
           var qrBlock = React.createElement('div', { key: 'qr', style: { marginTop: 10 } },
             React.createElement('div', { style: { fontSize: 12, color: T.textMuted, marginBottom: 6 } }, t('scan')),
             React.createElement('img', {
@@ -1043,7 +1044,7 @@ window.__ModuleLoader__.load({
 
       // Configure card on the official Plugins page. The key is
       // `<bundle>#<rowId>`; the bundle's patch declares the row as
-      // `dsh-video-fetch`, so both spellings are registered the same way
+      // `dsh-content-extract`, so both spellings are registered the same way
       // dsh-settings-persist does.
       slots.inject('plugins.row.config', function () {
         return slots.register(

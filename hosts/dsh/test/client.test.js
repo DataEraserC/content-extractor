@@ -170,7 +170,7 @@ test('client: the settings page calls the same hooks loading and loaded', () => 
   const card = components.find((entry) => entry.name === 'plugins.row.config')
   assert.ok(card, 'the plugins.row.config slot must be registered')
 
-  // What /video-fetch/state hands back once it resolves.
+  // What /content-extract/state hands back once it resolves.
   const loaded = {
     settings: { crf: 28, downloadEngine: 'ytdlp' },
     fields: [{ key: 'crf', type: 'integer', label: { zh: 'CRF', en: 'CRF' } }],

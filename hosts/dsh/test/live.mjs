@@ -55,7 +55,7 @@ await check('video_fetch: real bilibili download returns an existing file', asyn
 })
 
 await check('video_fetch: the download landed inside the session workspace (default subdir)', () => {
-  assert.equal(dirname(downloadedPath), join(workspace, 'dsh-video-fetch'), 'expected the workspace default subdir')
+  assert.equal(dirname(downloadedPath), join(workspace, 'dsh-content-extract'), 'expected the workspace default subdir')
 })
 
 await check('video_fetch: second run returns the same file without re-downloading', async () => {
@@ -85,24 +85,36 @@ await check('video_compress: standalone on the downloaded file', async () => {
   assert.ok(statSync(out).size < statSync(downloadedPath).size)
 })
 
-await check('video_login start: real QR PNG + pending state', async () => {
-  const r = await loginTool.execute({ action: 'start' }, {})
-  const qrPath = r.text.split('\n')[1]
-  assert.ok(existsSync(qrPath), `QR PNG missing: ${qrPath}`)
-  assert.ok(statSync(qrPath).size > 100, 'QR PNG too small')
-  assert.ok(readFileSync(qrPath).subarray(0, 4).toString('hex') === '89504e47', 'not a PNG')
-  const state = JSON.parse(readFileSync(join(process.env.DSH_HOME, 'video-fetch', 'login-bilibili.json'), 'utf8'))
-  assert.ok(state.key, 'no qrcode_key persisted')
+let lastSessionId = ''
+await check('video_login start: real QR challenge + pending state', async () => {
+  const r = await loginTool.execute({ action: 'start', channel: 'bilibili', method: 'qr' }, {})
+  assert.match(r.text, /sessionId: \S+/, `no session in result:\n${r.text}`)
+  assert.match(r.text, /QR payload: https?:\/\//, 'no QR payload to scan')
+  lastSessionId = r.text.match(/sessionId: (\S+)/)[1]
+  const sessionFile = join(process.env.DSH_HOME, 'content-extract', 'sessions', `${lastSessionId}.json`)
+  assert.ok(existsSync(sessionFile), `session file missing: ${sessionFile}`)
+  const state = JSON.parse(readFileSync(sessionFile, 'utf8'))
+  assert.ok(state.state?.qrcode_key || state.state?.jar !== undefined, 'no provider state persisted')
 })
 
-await check('video_login poll: single check returns the waiting code text', async () => {
-  const r = await loginTool.execute({ action: 'poll' }, {})
-  assert.ok(/waiting|scanned/i.test(r.text), `unexpected: ${r.text}`)
+await check('video_login poll: single check returns the waiting text', async () => {
+  const r = await loginTool.execute({ action: 'poll', sessionId: lastSessionId }, {})
+  // Nobody scanned, so this must NOT be a completed login; the exact waiting
+  // wording is the provider's own (Chinese for bilibili).
+  assert.doesNotMatch(r.text, /Logged in/, 'an unscanned QR cannot be done')
+  assert.ok(r.text.trim().length > 0, 'poll must say something')
 })
 
-await check('video_login status: no cookies → not logged in', async () => {
-  const r = await loginTool.execute({ action: 'status' }, {})
-  assert.match(r.text, /Not logged in/)
+await check('video_login status: no accounts is a structured refusal, not a crash', async () => {
+  await assert.rejects(
+    () => loginTool.execute({ action: 'status', channel: 'bilibili' }, {}),
+    /no accounts for channel bilibili/,
+  )
+})
+
+await check('video_login cancel: abandons the in-flight session', async () => {
+  const r = await loginTool.execute({ action: 'cancel', sessionId: lastSessionId }, {})
+  assert.match(r.text, /cancelled/i)
 })
 
 // ── cleanup (script-created scratch only) ───────────────────────────────────

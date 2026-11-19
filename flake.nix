@@ -1,5 +1,5 @@
 {
-  description = "video-login: harness-independent multi-channel login for video sites";
+  description = "content-extract: harness-independent content extraction with per-platform login";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -30,7 +30,7 @@
         # vendoring and metadata are shared; only the build target and install
         # step differ.
         common = {
-          version = "0.1.0";
+          version = "0.3.0";
           src = lib.cleanSourceWith {
             src = ./.;
             filter =
@@ -47,10 +47,10 @@
         };
 
         meta = with lib; {
-          description = "Multi-channel login for video sites (bilibili, douyin, YouTube, ...)";
-          homepage = "https://github.com/DataEraserC/video-login";
+          description = "Content extraction with per-platform login (bilibili, YouTube, news.wmpvp.com, ...)";
+          homepage = "https://github.com/DataEraserC/content-extract";
           license = licenses.mit;
-          mainProgram = "vlogin";
+          mainProgram = "cx";
         };
       in
       {
@@ -59,39 +59,39 @@
           # system TLS store, which is baked in via `rustls` + `rustls-native-certs`
           # is NOT used — we rely on the OS store through `rustls-tls` with
           # webpki roots for maximum reproducibility inside the sandbox.
-          vlogin = pkgs.rustPlatform.buildRustPackage (common // {
-            pname = "vlogin";
+          cx = pkgs.rustPlatform.buildRustPackage (common // {
+            pname = "cx";
             inherit cargoLock meta;
 
             buildType = "release";
 
             # Only the CLI binary is installed; the cdylib comes from
-            # `vlogin-abi` below.
-            cargoBuildFlags = [ "-p" "vlogin-cli" ];
+            # `extract-abi` below.
+            cargoBuildFlags = [ "-p" "extract-cli" ];
 
             # `cargo test` needs network for nothing, so the unit tests (cookie
             # codec, ptuiCB parser) can run in the sandbox.
             checkFlags = [ ];
 
             postInstall = ''
-              install -Dm644 README.md $out/share/doc/video-login/README.md
+              install -Dm644 README.md $out/share/doc/content-extract/README.md
             '';
           });
 
           # The C shared library the dsh plugin loads through koffi.
-          vlogin-abi = pkgs.rustPlatform.buildRustPackage (common // {
-            pname = "vlogin-abi";
+          extract-abi = pkgs.rustPlatform.buildRustPackage (common // {
+            pname = "extract-abi";
             inherit cargoLock meta;
 
-            cargoBuildFlags = [ "-p" "vlogin-abi" ];
+            cargoBuildFlags = [ "-p" "extract-abi" ];
 
             # buildRustPackage installs `bin/` by default; there is none here,
             # so install the cdylib by hand.
             installPhase = ''
               runHook preInstall
               mkdir -p $out/lib
-              find target -name 'libvlogin.so' -exec cp -v {} $out/lib/ \;
-              test -f $out/lib/libvlogin.so
+              find target -name 'libextract.so' -exec cp -v {} $out/lib/ \;
+              test -f $out/lib/libextract.so
               runHook postInstall
             '';
 
@@ -101,20 +101,20 @@
 
           # The DeepSeek Harness host: the cordis plugin, its Web UI page and
           # the koffi FFI loader, packaged as an npm bundle with the matching
-          # `libvlogin.so` beside it. Other harnesses get a sibling host
+          # `libextract.so` beside it. Other harnesses get a sibling host
           # directory that links the same C ABI.
           dsh =
             let
               dshPkgs = pkgs.extend deepseek-harness.overlays.default;
               abi = pkgs.rustPlatform.buildRustPackage (common // {
-                pname = "vlogin-abi-native";
+                pname = "extract-abi-native";
                 inherit cargoLock meta;
-                cargoBuildFlags = [ "-p" "vlogin-abi" ];
+                cargoBuildFlags = [ "-p" "extract-abi" ];
                 installPhase = ''
                   runHook preInstall
                   mkdir -p $out/lib
-                  find target -name 'libvlogin.so' -exec cp -v {} $out/lib/ \;
-                  test -f $out/lib/libvlogin.so
+                  find target -name 'libextract.so' -exec cp -v {} $out/lib/ \;
+                  test -f $out/lib/libextract.so
                   runHook postInstall
                 '';
                 doCheck = false;
@@ -125,7 +125,7 @@
             # this builder writes it (schema 1, one row pointing at the plugin's
             # cordis patch and package root).
             dshPkgs.dsh.buildDshBundle (finalAttrs: {
-              pname = "dsh-video-fetch";
+              pname = "dsh-content-extract";
               version = (lib.importJSON ./hosts/dsh/package.json).version;
 
               src = ./hosts/dsh;
@@ -138,25 +138,25 @@
               # test/live.mjs needs a browser and a real account.
               doCheck = false;
 
-              # The protocol layer ships beside the host; the koffi loader finds
+              # The kernel + platforms ship beside the host; the koffi loader finds
               # it at native/ without any environment variable.
               installation = dshPkgs.dsh.dsh-runtime;
 
               postInstall = ''
-                mkdir -p $out/lib/node_modules/dsh-video-fetch/native
-                install -m 0755 ${abi}/lib/libvlogin.so \
-                  $out/lib/node_modules/dsh-video-fetch/native/libvlogin.so
-                test -f $out/lib/node_modules/dsh-video-fetch/lib/client.js
-                test -f $out/lib/node_modules/dsh-video-fetch/native/libvlogin.so
+                mkdir -p $out/lib/node_modules/dsh-content-extract/native
+                install -m 0755 ${abi}/lib/libextract.so \
+                  $out/lib/node_modules/dsh-content-extract/native/libextract.so
+                test -f $out/lib/node_modules/dsh-content-extract/lib/client.js
+                test -f $out/lib/node_modules/dsh-content-extract/native/libextract.so
               '';
 
               meta = meta // {
-                description = "Video downloading for DeepSeek Harness with per-channel login and ffmpeg compression";
-                mainProgram = "dsh-video-fetch";
+                description = "Content extraction for DeepSeek Harness with per-platform login and ffmpeg compression";
+                mainProgram = "dsh-content-extract";
               };
             });
 
-          default = vlogin;
+          default = cx;
         };
 
         devShells.default = pkgs.mkShell {

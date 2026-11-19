@@ -1,4 +1,4 @@
-# dsh-video-fetch bundle patch: registers the plugin in a profile's layer stack.
+# dsh-content-extract bundle patch: registers the plugin in a profile's layer stack.
 - insert:
-    - id: dsh-video-fetch
-      name: 'dsh-video-fetch'
+    - id: dsh-content-extract
+      name: 'dsh-content-extract'

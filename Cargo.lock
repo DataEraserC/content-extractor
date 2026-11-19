@@ -166,6 +166,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "extract-abi"
+version = "0.3.0"
+dependencies = [
+ "extract-core",
+ "platform-astralparty",
+ "platform-bilibili",
+ "platform-douyin",
+ "platform-generic",
+ "platform-iqiyi",
+ "platform-tencent",
+ "platform-wmpvp",
+ "platform-youku",
+ "platform-youtube",
+ "reqwest",
+ "serde_json",
+ "tungstenite",
+]
+
+[[package]]
+name = "extract-cli"
+version = "0.3.0"
+dependencies = [
+ "extract-abi",
+ "extract-core",
+ "serde_json",
+]
+
+[[package]]
+name = "extract-core"
+version = "0.3.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -656,6 +693,80 @@ checksum = "f950b2377845cebe5cf8b5165cb3cc1a5e0fa5cfa3e1f7f55707d8fd82e0a7b7"
 dependencies = [
  "der",
  "spki",
+]
+
+[[package]]
+name = "platform-astralparty"
+version = "0.3.0"
+dependencies = [
+ "extract-core",
+ "serde_json",
+]
+
+[[package]]
+name = "platform-bilibili"
+version = "0.3.0"
+dependencies = [
+ "extract-core",
+ "rsa",
+ "serde_json",
+]
+
+[[package]]
+name = "platform-douyin"
+version = "0.3.0"
+dependencies = [
+ "extract-core",
+ "serde_json",
+]
+
+[[package]]
+name = "platform-generic"
+version = "0.3.0"
+dependencies = [
+ "extract-core",
+ "serde_json",
+]
+
+[[package]]
+name = "platform-iqiyi"
+version = "0.3.0"
+dependencies = [
+ "extract-core",
+ "md5",
+ "serde_json",
+]
+
+[[package]]
+name = "platform-tencent"
+version = "0.3.0"
+dependencies = [
+ "extract-core",
+ "serde_json",
+]
+
+[[package]]
+name = "platform-wmpvp"
+version = "0.3.0"
+dependencies = [
+ "extract-core",
+ "serde_json",
+]
+
+[[package]]
+name = "platform-youku"
+version = "0.3.0"
+dependencies = [
+ "extract-core",
+ "serde_json",
+]
+
+[[package]]
+name = "platform-youtube"
+version = "0.3.0"
+dependencies = [
+ "extract-core",
+ "serde_json",
 ]
 
 [[package]]
@@ -1341,36 +1452,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "vlogin-abi"
-version = "0.2.0"
-dependencies = [
- "reqwest",
- "serde_json",
- "tungstenite",
- "vlogin-core",
-]
-
-[[package]]
-name = "vlogin-cli"
-version = "0.2.0"
-dependencies = [
- "serde_json",
- "vlogin-abi",
- "vlogin-core",
-]
-
-[[package]]
-name = "vlogin-core"
-version = "0.2.0"
-dependencies = [
- "md5",
- "reqwest",
- "rsa",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "want"

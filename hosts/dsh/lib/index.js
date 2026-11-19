@@ -1,16 +1,22 @@
-// dsh-video-fetch — video downloading for DeepSeek Harness.
+// dsh-content-extract — content extraction for DeepSeek Harness.
 //
-// Three model tools:
-//   video_fetch    yt-dlp download (any site yt-dlp supports), optional
-//                  ffmpeg post-compress to a QQ-sendable MP4; a URL owned by
-//                  a login provider also gets that site's cookie jars, tried
-//                  in order when one fails; output lands inside the session
-//                  workspace only (see downloadDirOf);
+// Model tools:
+//   video_fetch    yt-dlp download (any site yt-dlp supports) with metadata,
+//                  optional ffmpeg post-compress to a QQ-sendable MP4; a URL
+//                  owned by a login provider also gets that site's cookie
+//                  jars, tried in order when one fails; output lands inside
+//                  the session workspace only (see downloadDirOf);
+//   content_candidates  asks who COULD handle a url/id — plural, ranked,
+//                  advisory; it never selects (lib/content/registry.js);
+//   content_extract  extracts with an EXPLICITLY chosen extractor id: video,
+//                  audio, articles, opus posts, replays, direct files.
+//                  Results carry an OPEN metadata map;
+//   content_extractors  lists every extractor with its platform and kind;
 //   video_login    per-channel login on a channel × method contract —
 //                  credentials live in <state>/accounts/<channel>.json (0600)
 //                  and never enter a tool result; <state> is the harness's
 //                  video-fetch directory, exported to the library (which is
-//                  harness-independent) as VLOGIN_HOME — see lib/state.js;
+//                  harness-independent) as EXTRACT_HOME — see lib/state.js;
 //   video_compress ffmpeg re-encode of any local file (CRF / height cap from
 //                  plugin config, not from Nix).
 //
@@ -29,13 +35,14 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 
 import { registerCommands } from './commands.js'
 import { download, engineOf } from './downloaders/index.js'
+import { candidates, extract as extractContent, listExtractors } from './content/registry.js'
 import { compressFile, compressOutputPath } from './ffmpeg.js'
 import { call, nativeStatus } from './native.js'
 import { isRegularFile } from './proc.js'
 import { buildRoutes } from './routes.js'
 import { EDITABLE_KEYS, applyPatch, coercePatch, plain, resetFields, snapshot } from './settings.js'
 
-export const name = 'dsh-video-fetch'
+export const name = 'dsh-content-extract'
 
 export const inject = ['tools']
 
@@ -44,7 +51,7 @@ export const Config = z.object({
   // write updates the RUNNING plugin in place (Loader commits volatile refs
   // and emits `loader/volatile-update`). Binaries and deadlines are ordinary
   // fields on purpose — changing them needs a restart.
-  /** Download subdir, resolved INSIDE the session workspace (`dsh-video-fetch` when empty). */
+  /** Download subdir, resolved INSIDE the session workspace (`dsh-content-extract` when empty). */
   downloadDir: z.string().default('').volatile(),
   /** yt-dlp format selector. */
   format: z.string().default('bv*+ba/b').volatile(),
@@ -116,7 +123,7 @@ function nearestReal(p) {
 
 /**
  * Resolve the download directory — always INSIDE the session workspace.
- * `downloadDir` is workspace-relative (`dsh-video-fetch` when empty); absolute
+ * `downloadDir` is workspace-relative (`dsh-content-extract` when empty); absolute
  * paths and `..` are rejected before touching the filesystem, and the nearest
  * existing ancestor is realpath-checked so a symlink planted in the workspace
  * cannot redirect a download out of it.
@@ -136,7 +143,7 @@ export function downloadDirOf(config, exec) {
   }
   mkdirSync(workspace, { recursive: true })
   const realBase = realpathSync(workspace)
-  const dir = configured === '' ? join(workspace, 'dsh-video-fetch') : resolve(workspace, configured)
+  const dir = configured === '' ? join(workspace, 'dsh-content-extract') : resolve(workspace, configured)
   const ancestor = nearestReal(dir)
   if (ancestor === undefined || !isInside(realBase, ancestor)) {
     throw new Error(`download dir resolves outside the session workspace: ${dir}`)
@@ -161,6 +168,42 @@ function statOf(p) {
 
 /** Gap between polls while waiting on a human to scan a QR code. */
 const POLL_BACKOFF_MS = 2000
+
+/**
+ * Render a FetchResult's open metadata map as readable lines.
+ *
+ * The map is open by design (see lib/content/contract.js): we print the keys we
+ * know as labeled lines, then any remaining scalar keys verbatim, so a new
+ * extractor's fields show up without touching this function. Nested values
+ * (players, tags, …) are JSON-stringified on one line each.
+ * @param {object} result - a FetchResult.
+ * @returns {string[]} lines.
+ */
+export function renderMetadata(result) {
+  const metadata = result.metadata ?? {}
+  const labels = {
+    title: 'Title', author: 'Author', author_id: 'Author id', id: 'Id', url: 'URL',
+    description: 'Description', duration: 'Duration (s)', thumbnail: 'Thumbnail',
+    created_at: 'Created at', upload_date: 'Upload date', view_count: 'Views',
+    like_count: 'Likes', comment_count: 'Comments', extractor: 'Site extractor',
+    map_id: 'Map id', map_name: 'Map', mode: 'Mode', round: 'Rounds', region: 'Region',
+    room_name: 'Room', frame_count: 'Frames', content_type: 'Content type', bytes: 'Bytes',
+  }
+  const lines = []
+  const seen = new Set()
+  for (const [key, label] of Object.entries(labels)) {
+    if (metadata[key] !== undefined && metadata[key] !== null && metadata[key] !== '') {
+      lines.push(`${label}: ${metadata[key]}`)
+      seen.add(key)
+    }
+  }
+  for (const [key, value] of Object.entries(metadata)) {
+    if (seen.has(key) || value === undefined || value === null || value === '') continue
+    const text = typeof value === 'object' ? JSON.stringify(value) : String(value)
+    lines.push(`${key}: ${text.length > 400 ? `${text.slice(0, 400)}…` : text}`)
+  }
+  return lines
+}
 
 /**
  * Which channel owns `url`.
@@ -260,11 +303,13 @@ export function apply(ctx, config) {
     defineTool({
       name: 'video_fetch',
       description:
-        'Download a video with yt-dlp and return its local file path. Works on any site yt-dlp supports (bilibili, YouTube, …). ' +
+        'Download a video with yt-dlp and return its local file path plus metadata (title, author, id, url, description, duration, …). ' +
+        'Works on any site yt-dlp supports (bilibili, YouTube, …). ' +
         'For sites with a video_login (e.g. bilibili), logged-in cookies are applied automatically and each stored cookie jar is tried in order if one fails. ' +
         'Pass compress: true to re-encode the download to a QQ-sendable MP4 in the same call; crf / maxHeight override the plugin settings for this call only. ' +
         'URL must be http(s). Re-running an already-downloaded URL returns the existing file instead of re-downloading. ' +
-        'Files always land inside the session workspace (downloadDir is a workspace-relative subdir; absolute paths are rejected).',
+        'Files always land inside the session workspace (downloadDir is a workspace-relative subdir; absolute paths are rejected). ' +
+        'Non-video content (articles, opus posts, replays, files) uses content_candidates + content_extract; a non-video URL here is refused with the right extractor named.',
       parameters: {
         url: { type: 'string', required: true, description: 'Video page URL (http/https), e.g. https://www.bilibili.com/video/BV1xx411c7mD' },
         compress: { type: 'boolean', description: 'Also re-encode to a QQ-sendable MP4 after downloading (default false)' },
@@ -278,23 +323,67 @@ export function apply(ctx, config) {
         if (!/^https?:\/\//i.test(url)) throw new Error(`unsupported URL scheme (need http/https): ${url.slice(0, 60)}`)
         const outDir = downloadDirOf(config, exec)
         const deadline = Date.now() + config.fetchTimeoutMs
-        const engine = engineOf(String(plain(config.downloadEngine) ?? 'ytdlp'))
         // Route the URL to its channel so the download can use that channel's
-        // accounts; `generic` matches anything and simply has none.
-        const picked = await channelForUrl(url)
-        const accounts = picked === null ? [] : (await call('accounts', { channel: picked })) ?? []
-        const fetched = await download({
-          engine,
-          url,
-          outDir,
-          format: plain(config.format),
-          accounts,
-          materialize: picked === null
-            ? null
-            : (accountId) => call('materialize', { channel: picked, account: accountId }).then((r) => r.path),
-          timeoutMs: Math.max(1000, deadline - Date.now()),
-        })
+        // accounts; `generic` matches anything and simply has none. A missing
+        // native library degrades to an anonymous download instead of failing
+        // a fetch that never needed credentials.
+        const picked = nativeStatus().available ? await channelForUrl(url) : null
+        const accounts = picked === null ? [] : (await call('accounts', { platform: picked })) ?? []
+        // The generic fetch layer owns routing now: a video page goes to the
+        // yt-dlp extractor (which wraps the same engine + cookie rotation),
+        // a direct file link to http-file. `downloadEngine` still picks the
+        // yt-dlp engine id for back-compat; other engines stay reachable
+        // through the legacy downloader seam below.
+        const engineId = String(plain(config.downloadEngine) ?? 'ytdlp')
+        let fetched
+        let metadataLines = []
+        if (engineId === 'ytdlp') {
+          // video_fetch is the video-specific tool, so it names its extractor
+          // explicitly rather than relying on inference. A non-video bilibili
+          // URL is refused here with the right extractor named — that is the
+          // whole point of separating article/opus from video.
+          const possible = candidates({ url })
+          const siteVideo = possible.find((entry) => entry.extractor.kind === 'video' && entry.extractor.platform !== 'generic')
+          const chosen = siteVideo?.extractor.id ?? 'generic.ytdlp'
+          const textKind = possible.find((entry) => ['article', 'post'].includes(entry.extractor.kind))
+          if (textKind && !siteVideo) {
+            throw new Error(
+              `this URL is ${textKind.extractor.kind} content, not a video; ` +
+              `use content_extract with extractor="${textKind.extractor.id}" instead of video_fetch`,
+            )
+          }
+          const result = await extractContent({
+            input: { url, extractor: chosen },
+            outDir,
+            format: plain(config.format),
+            accounts,
+            materialize: picked === null
+              ? null
+              : (accountId) => call('materialize', { platform: picked, account: accountId }).then((r) => r.path),
+            timeoutMs: Math.max(1000, deadline - Date.now()),
+            binary: config.ytdlpBinary,
+          })
+          const media = result.files.find((file) => file.role === 'media' || file.role === 'file') ?? result.files[0]
+          fetched = { path: media.path, attempt: result.attempt }
+          metadataLines = renderMetadata(result)
+          const metaFile = result.files.find((file) => file.role === 'metadata')
+          if (metaFile) metadataLines.push(`Metadata JSON: ${metaFile.path}`)
+        } else {
+          const engine = engineOf(engineId)
+          fetched = await download({
+            engine,
+            url,
+            outDir,
+            format: plain(config.format),
+            accounts,
+            materialize: picked === null
+              ? null
+              : (accountId) => call('materialize', { platform: picked, account: accountId }).then((r) => r.path),
+            timeoutMs: Math.max(1000, deadline - Date.now()),
+          })
+        }
         const lines = [`Downloaded: ${fetched.path}`, `Size: ${mb(statOf(fetched.path).size)}`]
+        if (metadataLines.length > 0) lines.push(...metadataLines)
         if (accounts.length > 1 && fetched.attempt > 0) {
           lines.push(`Account: ${fetched.attempt + 1} of ${accounts.length} (earlier accounts were rejected)`)
         }
@@ -319,6 +408,117 @@ export function apply(ctx, config) {
           lines.push(`Compressed: ${out} (${mb(statOf(fetched.path).size)} → ${mb(statOf(out).size)})`)
         }
         return { text: lines.join('\n') }
+      },
+    }),
+
+    defineTool({
+      name: 'content_candidates',
+      description:
+        'Ask which extractors COULD handle a URL or id. Returns EVERY match, ranked by specificity — ' +
+        'it never picks one for you. Read the list, then call content_extract with the chosen extractor id. ' +
+        'This two-step flow exists because one host serves many content kinds: bilibili has videos, articles ' +
+        '(/read/cv…), opus posts (/opus/…), audio and live rooms, and treating an article as a video fails. ' +
+        'Each candidate carries id, platform, label, kind, patterns, requiresLogin and its known metadata keys.',
+      parameters: {
+        url: { type: 'string', description: 'Page or resource URL (http/https)' },
+        id: { type: 'string', description: 'Bare resource id (e.g. a 16-digit Astral Party replay id)' },
+      },
+      output,
+      timeoutMs: 10000,
+      async execute(args) {
+        const url = args.url === undefined || args.url === null ? '' : String(args.url)
+        const id = args.id === undefined || args.id === null ? '' : String(args.id)
+        if (url === '' && id === '') throw new Error('content_candidates needs a url or an id')
+        const found = candidates({ url: url || undefined, id: id || undefined })
+        if (found.length === 0) {
+          return { text: 'No extractor advertises this input. Nothing was guessed; pick another URL/id or add an extractor.' }
+        }
+        const lines = [`${found.length} candidate(s), most specific first — choose one and pass it to content_extract:`]
+        for (const entry of found) {
+          const e = entry.extractor
+          lines.push(`  ${e.id} — ${e.label} [${e.kind}]${e.requiresLogin ? ' (login helps)' : ''}`)
+          lines.push(`    why: ${entry.reason} (specificity ${entry.score})`)
+          if (e.metadataKeys.length > 0) lines.push(`    extra metadata: ${e.metadataKeys.join(', ')}`)
+        }
+        return { text: lines.join('\n') }
+      },
+    }),
+
+    defineTool({
+      name: 'content_extract',
+      description:
+        'Extract content with an EXPLICITLY chosen extractor, returning its files plus an OPEN metadata map (JSON). ' +
+        'The `extractor` id is required — there is deliberately no auto-selection; call content_candidates first ' +
+        'to see who could handle the input. Handles video, audio, articles, opus/image-text posts, game replays ' +
+        'and direct files. metadata is a string→JSON map: common keys are title, author, id, url, description, ' +
+        'duration, thumbnail, created_at, and each extractor adds its own (an article adds text/images/word_count; ' +
+        'a replay adds map_name/mode/round/players). A .meta.json sidecar is written next to the artifacts. ' +
+        'Provide url OR id; params carries extractor-specific options ({"region":"intl"} for an international ' +
+        'replay, {"images":false} to skip an article\'s pictures). Files land inside the session workspace only.',
+      parameters: {
+        extractor: { type: 'string', required: true, description: 'Chosen extractor id, e.g. bilibili.article, bilibili.video, wmpvp.video, astralparty.replay, generic.file' },
+        url: { type: 'string', description: 'Page or resource URL (http/https)' },
+        id: { type: 'string', description: 'Bare resource id when the extractor supports one (e.g. a 16-digit replay id)' },
+        params: { type: 'json', description: 'Extractor-specific options, e.g. {"region":"intl"} or {"images":false}' },
+      },
+      output,
+      timeoutMs: config.fetchTimeoutMs + 30000,
+      async execute(args, exec) {
+        const url = args.url === undefined || args.url === null ? '' : String(args.url)
+        const id = args.id === undefined || args.id === null ? '' : String(args.id)
+        if (url === '' && id === '') throw new Error('content_extract needs a url or an id')
+        if (url !== '' && !/^https?:\/\//i.test(url)) throw new Error(`unsupported URL scheme (need http/https): ${url.slice(0, 60)}`)
+        const outDir = downloadDirOf(config, exec)
+        // Cookie rotation applies only when a login platform owns the URL AND
+        // the native library is loaded — a missing library must not take down
+        // public content (replays, articles, direct files).
+        let accounts = []
+        let materialize = null
+        if (url !== '' && nativeStatus().available) {
+          const picked = await channelForUrl(url)
+          if (picked !== null) {
+            accounts = (await call('accounts', { platform: picked })) ?? []
+            materialize = (accountId) => call('materialize', { platform: picked, account: accountId }).then((r) => r.path)
+          }
+        }
+        const result = await extractContent({
+          input: {
+            url: url || undefined,
+            id: id || undefined,
+            params: args.params ?? {},
+            extractor: String(args.extractor ?? ''),
+          },
+          outDir,
+          format: plain(config.format),
+          accounts,
+          materialize,
+          timeoutMs: config.fetchTimeoutMs,
+          binary: config.ytdlpBinary,
+        })
+        const lines = [`Kind: ${result.kind}`, `Extractor: ${result.source.extractor}`]
+        for (const file of result.files) {
+          lines.push(`File (${file.role}): ${file.path}${file.bytes === undefined ? ` — ${mb(statOf(file.path).size)}` : ` — ${mb(file.bytes)}`}`)
+        }
+        lines.push(...renderMetadata(result))
+        return { text: lines.join('\n') }
+      },
+    }),
+
+    defineTool({
+      name: 'content_extractors',
+      description:
+        'List every registered content extractor: id, platform, label, kind and known metadata keys. ' +
+        'Use this to discover what content_extract can handle (video, audio, article, post, replay, file, …).',
+      parameters: {},
+      output,
+      timeoutMs: 10000,
+      async execute() {
+        const rows = listExtractors()
+        return {
+          text: rows
+            .map((row) => `${row.id} (${row.label}) — kind: ${row.kind}, platform: ${row.platform}${row.requiresLogin ? ', login helps' : ''}`)
+            .join('\n'),
+        }
       },
     }),
 
@@ -553,7 +753,7 @@ export function apply(ctx, config) {
   // header of lib/commands.js. This is the only surface the TUI has.
   const commands = registerCommands(ctx, config)
   if (commands === 0) {
-    ctx.logger?.debug?.('dsh-video-fetch: no command registry in this composition; /video-settings and /video-login are unavailable')
+    ctx.logger?.debug?.('dsh-content-extract: no command registry in this composition; /video-settings and /video-login are unavailable')
   }
 
   // Web surfaces. The Plugins-page card is a `plugins.row.config` slot in the
@@ -568,7 +768,7 @@ export function apply(ctx, config) {
       const disposers = routes.map((route) =>
         server.register({ kind: 'exact', path: `${prefix}${route.path}`, handler: route.handler }),
       )
-      inner.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-video-fetch.web-routes')
+      inner.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-content-extract.web-routes')
     }
     ctx.inject(['webServer'], attach((inner) => inner.get('webServer'), ''))
     // Desktop/web-over-connection carrier: same handlers under /api.
@@ -603,10 +803,10 @@ export function apply(ctx, config) {
             },
           }))
         } catch (error) {
-          ctx.logger?.warn?.(`dsh-video-fetch: route ${route.path} was not registered: ${error.message}`)
+          ctx.logger?.warn?.(`dsh-content-extract: route ${route.path} was not registered: ${error.message}`)
         }
       }
-      inner.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-video-fetch.fetch-routes')
+      inner.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-content-extract.fetch-routes')
     })
   }
 }

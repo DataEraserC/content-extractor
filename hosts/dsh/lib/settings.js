@@ -17,8 +17,8 @@ export const EDITABLE = Object.freeze({
     type: 'string',
     label: { zh: '下载目录', en: 'Download directory' },
     hint: {
-      zh: '工作区内相对子路径，留空 = <工作区>/dsh-video-fetch',
-      en: 'Relative subdir inside the session workspace; empty = <workspace>/dsh-video-fetch',
+      zh: '工作区内相对子路径，留空 = <工作区>/dsh-content-extract',
+      en: 'Relative subdir inside the session workspace; empty = <workspace>/dsh-content-extract',
     },
   }),
   format: Object.freeze({
@@ -152,10 +152,10 @@ export function settingsEntry(ctx) {
     throw new Error('configEditor is unavailable in this composition — settings cannot be persisted here')
   }
   const entry = editor.entries().find(
-    (row) => row.options.id === 'dsh-video-fetch' || row.options.name === 'dsh-video-fetch',
+    (row) => row.options.id === 'dsh-content-extract' || row.options.name === 'dsh-content-extract',
   )
   if (entry === undefined) {
-    throw new Error('the dsh-video-fetch profile row is not addressable — reinstall the bundle and restart')
+    throw new Error('the dsh-content-extract profile row is not addressable — reinstall the bundle and restart')
   }
   return entry
 }

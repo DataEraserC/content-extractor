@@ -106,7 +106,7 @@ await check('compressOutputPath: .small suffix, never equals input', () => {
 
 // ── plugin registration ─────────────────────────────────────────────────────
 
-await check('apply: registers 4 tools with the right names + config defaults', async () => {
+await check('apply: registers 7 tools with the right names + config defaults', async () => {
   freshHome()
   const mod = await import('../lib/index.js')
   const tools = []
@@ -120,7 +120,7 @@ await check('apply: registers 4 tools with the right names + config defaults', a
   assert.equal(plain(config.preset), 'medium')
   assert.equal(config.ytdlpBinary, 'yt-dlp')
   mod.apply(ctx, config)
-  assert.deepEqual(tools.map((t) => t.name), ['video_fetch', 'video_login', 'video_compress', 'video_settings'])
+  assert.deepEqual(tools.map((t) => t.name), ['video_fetch', 'content_candidates', 'content_extract', 'content_extractors', 'video_login', 'video_compress', 'video_settings'])
 })
 
 await check('video_fetch: rejects non-http(s) URL before touching the network', async () => {
@@ -142,7 +142,7 @@ await check('downloadDir: resolves only inside the session workspace', async () 
   const mod = await import('../lib/index.js')
   const ws = mkdtempSync(join(tmpdir(), 'vf-ws-'))
   const exec = { agent: { session: { header: { cwd: ws } } } }
-  assert.equal(mod.downloadDirOf(mod.Config({}), exec), join(ws, 'dsh-video-fetch'))
+  assert.equal(mod.downloadDirOf(mod.Config({}), exec), join(ws, 'dsh-content-extract'))
   assert.equal(mod.downloadDirOf(mod.Config({ downloadDir: 'clips' }), exec), join(ws, 'clips'))
   assert.equal(mod.downloadDirOf(mod.Config({ downloadDir: '.' }), exec), resolve(ws))
   assert.throws(() => mod.downloadDirOf(mod.Config({ downloadDir: '/etc/videos' }), exec), /inside the session workspace/)
@@ -175,6 +175,29 @@ await check('video_fetch: fails closed before the network when the session has n
   freshHome()
   const tools = await registeredTools()
   await assert.rejects(() => tools.video_fetch.execute({ url: 'https://example.com/v' }, {}), /no session workspace/)
+})
+
+await check('content_extract: needs a url or an id, and rejects non-http schemes', async () => {
+  freshHome()
+  const tools = await registeredTools()
+  await assert.rejects(() => tools.content_extract.execute({ extractor: 'bilibili.video' }, {}), /needs a url or an id/)
+  await assert.rejects(() => tools.content_extract.execute({ extractor: 'bilibili.video', url: 'file:///etc/passwd' }, {}), /unsupported URL scheme/)
+})
+
+await check('content_extract: fails closed before the network when the session has no workspace', async () => {
+  freshHome()
+  const tools = await registeredTools()
+  await assert.rejects(() => tools.content_extract.execute({ extractor: 'astralparty.replay', id: '1795093645690603' }, {}), /no session workspace/)
+})
+
+await check('content_extractors: lists ids and kinds offline', async () => {
+  freshHome()
+  const tools = await registeredTools()
+  const result = await tools.content_extractors.execute({}, {})
+  assert.match(result.text, /astralparty.replay/)
+  assert.match(result.text, /wmpvp.video/)
+  assert.match(result.text, /generic.ytdlp/)
+  assert.match(result.text, /generic.file/)
 })
 
 // ── settings contract (shared by video_settings and the web page) ───────────
@@ -258,7 +281,7 @@ await check('video_login: unknown channel is a structured channel error', async 
   const tools = await registeredTools()
   await assert.rejects(
     () => tools.video_login.execute({ action: 'start', channel: 'nope', method: 'qr' }, {}),
-    /unknown channel 'nope'/,
+    /unknown platform 'nope'/,
   )
 })
 
@@ -311,28 +334,40 @@ await check('routes: state reports live settings, the field table, and labeled c
   const mod = await import('../lib/index.js')
   const config = mod.Config({})
   const routes = buildRoutes({ get: () => undefined }, config)
-  const { status, body } = await callRoute(routes, '/video-fetch/state')
+  const { status, body } = await callRoute(routes, '/content-extract/state')
   assert.equal(status, 200)
   assert.equal(body.settings.crf, 26)
   assert.equal(body.settings.maxHeight, 720)
   assert.deepEqual(body.fields.map((field) => field.key), [...EDITABLE_KEYS])
+  // The generic fetch layer is advertised alongside the login channels.
+  assert.ok(body.extractors.some((entry) => entry.id === 'astralparty.replay'))
   const crf = body.fields.find((field) => field.key === 'crf')
   assert.deepEqual({ min: crf.min, max: crf.max, type: crf.type }, { min: 0, max: 51, type: 'integer' })
   // The card needs a display name per channel — that label was the complaint.
   if (!nativeStatus().available) return
-  const bilibili = body.channels.find((entry) => entry.channel.id === 'bilibili')
-  assert.equal(bilibili.channel.name, '哔哩哔哩')
-  assert.ok(bilibili.channel.methods.some((method) => method.id === 'qr' && method.implemented))
+  const bilibili = body.channels.find((entry) => (entry.platform ?? entry.channel).id === 'bilibili')
+  assert.equal(bilibili.platform.name, '哔哩哔哩')
+  assert.ok(bilibili.platform.methods.some((method) => method.id === 'qr' && method.implemented))
+})
+
+await check('routes: extractors endpoint lists the fetch layer without the native library', async () => {
+  freshHome()
+  const mod = await import('../lib/index.js')
+  const routes = buildRoutes({ get: () => undefined }, mod.Config({}))
+  const { status, body } = await callRoute(routes, '/content-extract/extractors')
+  assert.equal(status, 200)
+  assert.ok(body.extractors.some((entry) => entry.id === 'generic.ytdlp'))
+  assert.ok(body.extractors.some((entry) => entry.id === 'generic.file'))
 })
 
 await check('routes: set rejects a bad value with 400 and never writes', async () => {
   freshHome()
   const mod = await import('../lib/index.js')
   const routes = buildRoutes({ get: () => undefined }, mod.Config({}))
-  const bad = await callRoute(routes, '/video-fetch/set', { patch: { crf: 99 } })
+  const bad = await callRoute(routes, '/content-extract/set', { patch: { crf: 99 } })
   assert.equal(bad.status, 400)
   assert.match(bad.body.error, /must be 0-51/)
-  const unknown = await callRoute(routes, '/video-fetch/set', { patch: { nope: 1 } })
+  const unknown = await callRoute(routes, '/content-extract/set', { patch: { nope: 1 } })
   assert.equal(unknown.status, 400)
   assert.match(unknown.body.error, /unknown setting/)
 })
@@ -341,10 +376,10 @@ await check('routes: set/reset fail loudly when the host has no configEditor', a
   freshHome()
   const mod = await import('../lib/index.js')
   const routes = buildRoutes({ get: () => undefined }, mod.Config({}))
-  const set = await callRoute(routes, '/video-fetch/set', { patch: { crf: 22 } })
+  const set = await callRoute(routes, '/content-extract/set', { patch: { crf: 22 } })
   assert.equal(set.status, 400)
   assert.match(set.body.error, /configEditor is unavailable/)
-  const reset = await callRoute(routes, '/video-fetch/reset', {})
+  const reset = await callRoute(routes, '/content-extract/reset', {})
   assert.equal(reset.status, 400)
   assert.match(reset.body.error, /configEditor is unavailable/)
 })
@@ -353,14 +388,14 @@ await check('routes: login status is offline-safe; challenge route rejects an em
   freshHome()
   const mod = await import('../lib/index.js')
   const routes = buildRoutes({ get: () => undefined }, mod.Config({}))
-  const status = await callRoute(routes, '/video-fetch/login/status')
+  const status = await callRoute(routes, '/content-extract/login/status')
   assert.equal(status.status, 200)
   // Shape is the channel advertisement plus its pool, not a bare login flag.
   assert.equal(status.body.accounts.length, 0)
   assert.equal(status.body.active, null)
-  const unknown = await callRoute(routes, '/video-fetch/login/status?channel=nope')
+  const unknown = await callRoute(routes, '/content-extract/login/status?channel=nope')
   assert.equal(unknown.status, 400)
-  const blank = await callRoute(routes, '/video-fetch/challenge')
+  const blank = await callRoute(routes, '/content-extract/challenge')
   assert.equal(blank.status, 400)
   assert.match(blank.body.error, /no scannable QR payload/)
 })
@@ -370,7 +405,7 @@ await check('routes: logout of an unknown account is a no-op, not an error', asy
   if (!nativeStatus().available) return
   const mod = await import('../lib/index.js')
   const routes = buildRoutes({ get: () => undefined }, mod.Config({}))
-  const result = await callRoute(routes, '/video-fetch/login/logout', {
+  const result = await callRoute(routes, '/content-extract/login/logout', {
     channel: 'bilibili',
     account: 'deadbeefdeadbeef',
   })
@@ -415,7 +450,7 @@ await check('commands: register into the registry, and are skipped when it is ab
 
   const with_ = ctxWithCommands()
   mod.apply(with_.ctx, mod.Config({}))
-  assert.deepEqual(with_.definitions.map((d) => d.name), ['video-settings', 'video-login'])
+  assert.deepEqual(with_.definitions.map((d) => d.name), ['content-settings', 'content-login'])
   // Discovery copy and the input hint are what a composer's slash menu shows.
   for (const definition of with_.definitions) {
     assert.ok(definition.description.length > 0, `${definition.name} needs a description`)
@@ -427,12 +462,12 @@ await check('commands: register into the registry, and are skipped when it is ab
   mod.apply(without, mod.Config({}))
 })
 
-await check('commands: /video-settings reads, writes, and rejects a bad field', async () => {
+await check('commands: /content-settings reads, writes, and rejects a bad field', async () => {
   freshHome()
   const { ctx, definitions } = ctxWithCommands()
   const mod = await import('../lib/index.js')
   mod.apply(ctx, mod.Config({}))
-  const settings = definitions.find((d) => d.name === 'video-settings')
+  const settings = definitions.find((d) => d.name === 'content-settings')
 
   // `rawInput` keeps the separator whitespace; an empty tail is "" or " ".
   const read = await runCommand(settings, '')
@@ -458,12 +493,12 @@ await check('commands: /video-settings reads, writes, and rejects a bad field', 
   assert.match(write.text, /configEditor is unavailable/)
 })
 
-await check('commands: /video-login reports the backend when it is missing', async () => {
+await check('commands: /content-login reports the backend when it is missing', async () => {
   freshHome()
   const { ctx, definitions } = ctxWithCommands()
   const mod = await import('../lib/index.js')
   mod.apply(ctx, mod.Config({}))
-  const login = definitions.find((d) => d.name === 'video-login')
+  const login = definitions.find((d) => d.name === 'content-login')
 
   const result = await runCommand(login, '')
   if (nativeStatus().available) {
@@ -484,13 +519,13 @@ await check('commands: /video-login reports the backend when it is missing', asy
   assert.notEqual(nostart.kind, 'success')
 })
 
-await check('commands: /video-login start → poll carries the session across invocations', async () => {
+await check('commands: /content-login start → poll carries the session across invocations', async () => {
   freshHome()
   if (!nativeStatus().available) return
   const { ctx, definitions } = ctxWithCommands()
   const mod = await import('../lib/index.js')
   mod.apply(ctx, mod.Config({}))
-  const login = definitions.find((d) => d.name === 'video-login')
+  const login = definitions.find((d) => d.name === 'content-login')
 
   // Network-free half: with nothing started, poll must refuse as a result
   // rather than throw. This is the half the Nix build sandbox can check.
@@ -506,7 +541,7 @@ await check('commands: /video-login start → poll carries the session across in
   assert.equal(started.kind, 'success', started.text)
   const id = /sessionId: (\S+)/.exec(started.text)
   assert.ok(id, `start must name the session: ${started.text}`)
-  assert.match(started.text, /\/video-login poll/, 'start must say what comes next')
+  assert.match(started.text, /\/content-login poll/, 'start must say what comes next')
 
   // A separate invocation — the session lives in the native layer, so the
   // command only has to remember the id.
