@@ -23,7 +23,7 @@ use crate::error::{Error, Result};
 
 /// Browser-ish UA. Some sites refuse a bare reqwest UA outright.
 pub const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) \
-                      Chrome/126.0.0.0 Safari/537.36 content-extract";
+                      Chrome/126.0.0.0 Safari/537.36 content-extractor";
 
 /// Default per-request timeout.
 pub const TIMEOUT: Duration = Duration::from_secs(15);

@@ -5,7 +5,7 @@
 //! so the tests moved with it: the logic under test is now Rust, and testing a
 //! port from the JS side would only prove the FFI round-trips.
 
-use extract_core::cookies::{
+use extractor_core::cookies::{
     count_netscape_cookies, header_from_netscape, parse_http_date, parse_netscape,
     parse_set_cookies, to_netscape,
 };

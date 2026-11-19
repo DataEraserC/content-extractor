@@ -1,6 +1,6 @@
 // The extractor registry: what exists, and who *could* handle an input.
 //
-// Mirrors the Rust kernel's `extract_core::registry`: `candidates` is plural
+// Mirrors the Rust kernel's `extractor_core::registry`: `candidates` is plural
 // and advisory, `extractorOf` resolves an explicitly chosen id, and there is no
 // first-match-wins function anywhere in this file.
 //

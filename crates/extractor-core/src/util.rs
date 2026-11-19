@@ -9,7 +9,7 @@
 //! Reading a clock or an entropy source is an effect, so this crate does not do
 //! it. The token and id generators are pure functions of a caller-supplied
 //! seed; [`crate::ambient::Ambient`] is the type that carries one, and
-//! `extract-abi` is where a real clock and a real seed enter the process.
+//! `extractor-abi` is where a real clock and a real seed enter the process.
 
 /// Standard base64 (RFC 4648, with padding).
 ///

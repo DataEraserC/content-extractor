@@ -1,4 +1,4 @@
-// Unit tests for the content-extraction layer: candidate listing (plural,
+// Unit tests for the content-extractorion layer: candidate listing (plural,
 // never selecting), explicit selection, the open metadata map, the Astral
 // Party replay parser (against a synthetic frame in the real CDN's wire
 // format), bilibili article parsing, and direct-file naming.

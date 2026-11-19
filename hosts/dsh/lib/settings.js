@@ -17,8 +17,8 @@ export const EDITABLE = Object.freeze({
     type: 'string',
     label: { zh: '下载目录', en: 'Download directory' },
     hint: {
-      zh: '工作区内相对子路径，留空 = <工作区>/dsh-content-extract',
-      en: 'Relative subdir inside the session workspace; empty = <workspace>/dsh-content-extract',
+      zh: '工作区内相对子路径，留空 = <工作区>/dsh-content-extractor',
+      en: 'Relative subdir inside the session workspace; empty = <workspace>/dsh-content-extractor',
     },
   }),
   format: Object.freeze({
@@ -152,10 +152,10 @@ export function settingsEntry(ctx) {
     throw new Error('configEditor is unavailable in this composition — settings cannot be persisted here')
   }
   const entry = editor.entries().find(
-    (row) => row.options.id === 'dsh-content-extract' || row.options.name === 'dsh-content-extract',
+    (row) => row.options.id === 'dsh-content-extractor' || row.options.name === 'dsh-content-extractor',
   )
   if (entry === undefined) {
-    throw new Error('the dsh-content-extract profile row is not addressable — reinstall the bundle and restart')
+    throw new Error('the dsh-content-extractor profile row is not addressable — reinstall the bundle and restart')
   }
   return entry
 }

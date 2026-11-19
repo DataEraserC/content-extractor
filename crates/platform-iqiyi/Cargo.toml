@@ -7,7 +7,7 @@ repository.workspace = true
 description = "iqiyi platform: login methods and content extractors"
 
 [dependencies]
-extract-core = { workspace = true }
+extractor-core = { workspace = true }
 serde_json = { workspace = true }
 # Only used by the QR image request's `salt` parameter.
 md5 = "0.7"

@@ -1,4 +1,4 @@
-//! `extract-core` — the harness-independent content-extraction kernel.
+//! `extractor-core` — the harness-independent content-extractorion kernel.
 //!
 //! The crate answers two questions: **what content could be extracted from this
 //! input, and by which extractor** (the caller chooses), and **given a platform
@@ -18,10 +18,10 @@
 //!
 //! | crate | role | may touch |
 //! |---|---|---|
-//! | `extract-core` | protocol + transport | network only |
+//! | `extractor-core` | protocol + transport | network only |
 //! | `platform-*` | one site's login + content descriptors | network only |
-//! | `extract-abi` | effects behind the C ABI | fs, env, processes, clock |
-//! | `extract-cli` | argv, prompts, exit codes | everything |
+//! | `extractor-abi` | effects behind the C ABI | fs, env, processes, clock |
+//! | `extractor-cli` | argv, prompts, exit codes | everything |
 //!
 //! [`store::Storage`] is the seam for bytes on a disk, and [`ambient::Ambient`]
 //! is the seam for time and entropy. `tests/purity.rs` enforces the boundary so
@@ -120,7 +120,7 @@ pub struct PlatformStatus {
 
 /// Build a registry from the platforms a composition root linked.
 ///
-/// Kept as a free function so `extract-abi` has one obvious entry point and this
+/// Kept as a free function so `extractor-abi` has one obvious entry point and this
 /// crate still names no platform itself.
 #[must_use]
 pub fn registry_of(providers: Vec<Arc<dyn Provider>>) -> Registry {

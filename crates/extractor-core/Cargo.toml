@@ -1,10 +1,10 @@
 [package]
-name = "extract-core"
+name = "extractor-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Harness-independent content-extraction kernel: provider contract, credentials, cookie codec, account pool"
+description = "Harness-independent content-extractorion kernel: provider contract, credentials, cookie codec, account pool"
 
 [dependencies]
 serde = { workspace = true }

@@ -120,7 +120,7 @@ await check('apply: registers 7 tools with the right names + config defaults', a
   assert.equal(plain(config.preset), 'medium')
   assert.equal(config.ytdlpBinary, 'yt-dlp')
   mod.apply(ctx, config)
-  assert.deepEqual(tools.map((t) => t.name), ['video_fetch', 'content_candidates', 'content_extract', 'content_extractors', 'video_login', 'video_compress', 'video_settings'])
+  assert.deepEqual(tools.map((t) => t.name), ['video_fetch', 'content_candidates', 'content_extractor', 'content_extractors', 'video_login', 'video_compress', 'video_settings'])
 })
 
 await check('video_fetch: rejects non-http(s) URL before touching the network', async () => {
@@ -142,7 +142,7 @@ await check('downloadDir: resolves only inside the session workspace', async () 
   const mod = await import('../lib/index.js')
   const ws = mkdtempSync(join(tmpdir(), 'vf-ws-'))
   const exec = { agent: { session: { header: { cwd: ws } } } }
-  assert.equal(mod.downloadDirOf(mod.Config({}), exec), join(ws, 'dsh-content-extract'))
+  assert.equal(mod.downloadDirOf(mod.Config({}), exec), join(ws, 'dsh-content-extractor'))
   assert.equal(mod.downloadDirOf(mod.Config({ downloadDir: 'clips' }), exec), join(ws, 'clips'))
   assert.equal(mod.downloadDirOf(mod.Config({ downloadDir: '.' }), exec), resolve(ws))
   assert.throws(() => mod.downloadDirOf(mod.Config({ downloadDir: '/etc/videos' }), exec), /inside the session workspace/)
@@ -177,17 +177,17 @@ await check('video_fetch: fails closed before the network when the session has n
   await assert.rejects(() => tools.video_fetch.execute({ url: 'https://example.com/v' }, {}), /no session workspace/)
 })
 
-await check('content_extract: needs a url or an id, and rejects non-http schemes', async () => {
+await check('content_extractor: needs a url or an id, and rejects non-http schemes', async () => {
   freshHome()
   const tools = await registeredTools()
-  await assert.rejects(() => tools.content_extract.execute({ extractor: 'bilibili.video' }, {}), /needs a url or an id/)
-  await assert.rejects(() => tools.content_extract.execute({ extractor: 'bilibili.video', url: 'file:///etc/passwd' }, {}), /unsupported URL scheme/)
+  await assert.rejects(() => tools.content_extractor.execute({ extractor: 'bilibili.video' }, {}), /needs a url or an id/)
+  await assert.rejects(() => tools.content_extractor.execute({ extractor: 'bilibili.video', url: 'file:///etc/passwd' }, {}), /unsupported URL scheme/)
 })
 
-await check('content_extract: fails closed before the network when the session has no workspace', async () => {
+await check('content_extractor: fails closed before the network when the session has no workspace', async () => {
   freshHome()
   const tools = await registeredTools()
-  await assert.rejects(() => tools.content_extract.execute({ extractor: 'astralparty.replay', id: '1795093645690603' }, {}), /no session workspace/)
+  await assert.rejects(() => tools.content_extractor.execute({ extractor: 'astralparty.replay', id: '1795093645690603' }, {}), /no session workspace/)
 })
 
 await check('content_extractors: lists ids and kinds offline', async () => {
@@ -334,7 +334,7 @@ await check('routes: state reports live settings, the field table, and labeled c
   const mod = await import('../lib/index.js')
   const config = mod.Config({})
   const routes = buildRoutes({ get: () => undefined }, config)
-  const { status, body } = await callRoute(routes, '/content-extract/state')
+  const { status, body } = await callRoute(routes, '/content-extractor/state')
   assert.equal(status, 200)
   assert.equal(body.settings.crf, 26)
   assert.equal(body.settings.maxHeight, 720)
@@ -354,7 +354,7 @@ await check('routes: extractors endpoint lists the fetch layer without the nativ
   freshHome()
   const mod = await import('../lib/index.js')
   const routes = buildRoutes({ get: () => undefined }, mod.Config({}))
-  const { status, body } = await callRoute(routes, '/content-extract/extractors')
+  const { status, body } = await callRoute(routes, '/content-extractor/extractors')
   assert.equal(status, 200)
   assert.ok(body.extractors.some((entry) => entry.id === 'generic.ytdlp'))
   assert.ok(body.extractors.some((entry) => entry.id === 'generic.file'))
@@ -364,10 +364,10 @@ await check('routes: set rejects a bad value with 400 and never writes', async (
   freshHome()
   const mod = await import('../lib/index.js')
   const routes = buildRoutes({ get: () => undefined }, mod.Config({}))
-  const bad = await callRoute(routes, '/content-extract/set', { patch: { crf: 99 } })
+  const bad = await callRoute(routes, '/content-extractor/set', { patch: { crf: 99 } })
   assert.equal(bad.status, 400)
   assert.match(bad.body.error, /must be 0-51/)
-  const unknown = await callRoute(routes, '/content-extract/set', { patch: { nope: 1 } })
+  const unknown = await callRoute(routes, '/content-extractor/set', { patch: { nope: 1 } })
   assert.equal(unknown.status, 400)
   assert.match(unknown.body.error, /unknown setting/)
 })
@@ -376,10 +376,10 @@ await check('routes: set/reset fail loudly when the host has no configEditor', a
   freshHome()
   const mod = await import('../lib/index.js')
   const routes = buildRoutes({ get: () => undefined }, mod.Config({}))
-  const set = await callRoute(routes, '/content-extract/set', { patch: { crf: 22 } })
+  const set = await callRoute(routes, '/content-extractor/set', { patch: { crf: 22 } })
   assert.equal(set.status, 400)
   assert.match(set.body.error, /configEditor is unavailable/)
-  const reset = await callRoute(routes, '/content-extract/reset', {})
+  const reset = await callRoute(routes, '/content-extractor/reset', {})
   assert.equal(reset.status, 400)
   assert.match(reset.body.error, /configEditor is unavailable/)
 })
@@ -388,14 +388,14 @@ await check('routes: login status is offline-safe; challenge route rejects an em
   freshHome()
   const mod = await import('../lib/index.js')
   const routes = buildRoutes({ get: () => undefined }, mod.Config({}))
-  const status = await callRoute(routes, '/content-extract/login/status')
+  const status = await callRoute(routes, '/content-extractor/login/status')
   assert.equal(status.status, 200)
   // Shape is the channel advertisement plus its pool, not a bare login flag.
   assert.equal(status.body.accounts.length, 0)
   assert.equal(status.body.active, null)
-  const unknown = await callRoute(routes, '/content-extract/login/status?channel=nope')
+  const unknown = await callRoute(routes, '/content-extractor/login/status?channel=nope')
   assert.equal(unknown.status, 400)
-  const blank = await callRoute(routes, '/content-extract/challenge')
+  const blank = await callRoute(routes, '/content-extractor/challenge')
   assert.equal(blank.status, 400)
   assert.match(blank.body.error, /no scannable QR payload/)
 })
@@ -405,7 +405,7 @@ await check('routes: logout of an unknown account is a no-op, not an error', asy
   if (!nativeStatus().available) return
   const mod = await import('../lib/index.js')
   const routes = buildRoutes({ get: () => undefined }, mod.Config({}))
-  const result = await callRoute(routes, '/content-extract/login/logout', {
+  const result = await callRoute(routes, '/content-extractor/login/logout', {
     channel: 'bilibili',
     account: 'deadbeefdeadbeef',
   })

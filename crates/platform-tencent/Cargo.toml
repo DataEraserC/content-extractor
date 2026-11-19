@@ -7,5 +7,5 @@ repository.workspace = true
 description = "tencent platform: login methods and content extractors"
 
 [dependencies]
-extract-core = { workspace = true }
+extractor-core = { workspace = true }
 serde_json = { workspace = true }

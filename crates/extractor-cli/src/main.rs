@@ -23,11 +23,11 @@ use std::io::Read;
 use std::process::ExitCode;
 
 use serde_json::{json, Value};
-// `extract-abi` exposes the effectful facade as the crate `extract`: the
-// library it builds is `libextract.so` for the C ABI, and the CLI is its second
+// `extractor-abi` exposes the effectful facade as the crate `extractor`: the
+// library it builds is `libextractor.so` for the C ABI, and the CLI is its second
 // host.
-use extract::Service;
-use extract_core::Error;
+use extractor::Service;
+use extractor_core::Error;
 
 /// Printed on a bad command line.
 const USAGE: &str = "\
@@ -193,7 +193,7 @@ fn parse(arguments: &[String]) -> Option<Command> {
 }
 
 /// Execute a parsed command against `hub`.
-fn run(service: &Service, command: Command) -> extract_core::Result<Value> {
+fn run(service: &Service, command: Command) -> extractor_core::Result<Value> {
     match command {
         Command::Platforms => {
             serde_json::to_value(service.site_platforms()).map_err(Error::from)
@@ -213,7 +213,7 @@ fn run(service: &Service, command: Command) -> extract_core::Result<Value> {
             serde_json::to_value(service.accounts(&channel)?).map_err(Error::from)
         }
         Command::Start { channel, method, params } => {
-            let request = extract_core::StartRequest { platform: channel, method, params, label: None };
+            let request = extractor_core::StartRequest { platform: channel, method, params, label: None };
             serde_json::to_value(service.start(&request)?).map_err(Error::from)
         }
         Command::Poll { session_id } => {

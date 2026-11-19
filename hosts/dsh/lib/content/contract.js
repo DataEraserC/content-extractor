@@ -1,4 +1,4 @@
-// The content-extraction contract.
+// The content-extractorion contract.
 //
 // ## Selection is explicit
 //

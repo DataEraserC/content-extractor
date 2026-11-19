@@ -1,5 +1,5 @@
 [package]
-name = "extract-cli"
+name = "extractor-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,8 +12,8 @@ path = "src/main.rs"
 
 [dependencies]
 # The CLI is a second host of the same effects: state root resolution, the
-# clock, the filesystem and the browser launcher all live in `extract-abi`, and
+# clock, the filesystem and the browser launcher all live in `extractor-abi`, and
 # re-implementing them here would defeat the split the kernel is built around.
-extract-abi = { path = "../extract-abi" }
-extract-core = { workspace = true }
+extractor-abi = { path = "../extractor-abi" }
+extractor-core = { workspace = true }
 serde_json = { workspace = true }

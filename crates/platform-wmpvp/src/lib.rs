@@ -38,12 +38,12 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use extract_core::ambient::Ambient;
-use extract_core::content::{ContentKind, CredentialUse, ExtractorInfo};
-use extract_core::cookies;
-use extract_core::error::Result;
-use extract_core::model::{ChannelInfo, MethodInfo, MethodKind};
-use extract_core::provider::{require_method, Challenge, CheckOutcome, Provider};
+use extractor_core::ambient::Ambient;
+use extractor_core::content::{ContentKind, CredentialUse, ExtractorInfo};
+use extractor_core::cookies;
+use extractor_core::error::Result;
+use extractor_core::model::{ChannelInfo, MethodInfo, MethodKind};
+use extractor_core::provider::{require_method, Challenge, CheckOutcome, Provider};
 
 /// The public post API the SPA calls. No credential needed for public posts.
 pub const POST_API: &str = "https://appengine.wmpvp.com/steamcn/community/post/getPostById";
@@ -126,7 +126,7 @@ impl Provider for WmPvp {
     ) -> Result<(Challenge, Value)> {
         require_method(&self.info(), method)?;
         let _ = (params, ambient);
-        Err(extract_core::provider::unsupported(&self.info(), method))
+        Err(extractor_core::provider::unsupported(&self.info(), method))
     }
 
     fn check(&self, cookies_text: &str) -> Result<CheckOutcome> {

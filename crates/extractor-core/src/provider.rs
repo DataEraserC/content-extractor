@@ -24,7 +24,7 @@ use crate::cookies;
 use crate::error::{Error, Result};
 use crate::session::Session;
 
-// Re-exported so a platform crate can `use extract_core::provider::{...}` for
+// Re-exported so a platform crate can `use extractor_core::provider::{...}` for
 // everything the trait mentions without also importing from `model`.
 pub use crate::model::{Challenge, ChannelInfo, MethodInfo, MethodKind, Poll};
 

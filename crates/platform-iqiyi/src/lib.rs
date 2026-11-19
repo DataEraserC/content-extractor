@@ -22,17 +22,17 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use extract_core::provider::{ state_of,
+use extractor_core::provider::{ state_of,
     harvest, jar_of, merge_jar, require_method, state_str, Challenge, CheckOutcome, Poll,
     Provider,
 };
-use extract_core::content::{ContentKind, CredentialUse, ExtractorInfo};
-use extract_core::ambient::Ambient;
-use extract_core::cookies;
-use extract_core::error::{Error, Result};
-use extract_core::http;
-use extract_core::model::{ChannelInfo, MethodInfo, MethodKind};
-use extract_core::util::base64_encode;
+use extractor_core::content::{ContentKind, CredentialUse, ExtractorInfo};
+use extractor_core::ambient::Ambient;
+use extractor_core::cookies;
+use extractor_core::error::{Error, Result};
+use extractor_core::http;
+use extractor_core::model::{ChannelInfo, MethodInfo, MethodKind};
+use extractor_core::util::base64_encode;
 
 const DOMAIN: &str = "iqiyi.com";
 const GEN_TOKEN_URL: &str = "https://passport.iqiyi.com/apis/qrcode/gen_login_token.action";
@@ -165,7 +165,7 @@ impl Provider for IQiyi {
         ))
     }
 
-    fn poll(&self, session: &mut extract_core::session::Session, ambient: Ambient) -> Result<Poll> {
+    fn poll(&self, session: &mut extractor_core::session::Session, ambient: Ambient) -> Result<Poll> {
         let token = state_str(session, "token");
         if token.is_empty() {
             return Err(Error::channel("this session has no iqiyi login token"));

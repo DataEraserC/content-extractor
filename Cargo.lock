@@ -166,10 +166,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "extract-abi"
+name = "extractor-abi"
 version = "0.3.0"
 dependencies = [
- "extract-core",
+ "extractor-core",
  "platform-astralparty",
  "platform-bilibili",
  "platform-douyin",
@@ -185,16 +185,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "extract-cli"
+name = "extractor-cli"
 version = "0.3.0"
 dependencies = [
- "extract-abi",
- "extract-core",
+ "extractor-abi",
+ "extractor-core",
  "serde_json",
 ]
 
 [[package]]
-name = "extract-core"
+name = "extractor-core"
 version = "0.3.0"
 dependencies = [
  "reqwest",
@@ -699,7 +699,7 @@ dependencies = [
 name = "platform-astralparty"
 version = "0.3.0"
 dependencies = [
- "extract-core",
+ "extractor-core",
  "serde_json",
 ]
 
@@ -707,7 +707,7 @@ dependencies = [
 name = "platform-bilibili"
 version = "0.3.0"
 dependencies = [
- "extract-core",
+ "extractor-core",
  "rsa",
  "serde_json",
 ]
@@ -716,7 +716,7 @@ dependencies = [
 name = "platform-douyin"
 version = "0.3.0"
 dependencies = [
- "extract-core",
+ "extractor-core",
  "serde_json",
 ]
 
@@ -724,7 +724,7 @@ dependencies = [
 name = "platform-generic"
 version = "0.3.0"
 dependencies = [
- "extract-core",
+ "extractor-core",
  "serde_json",
 ]
 
@@ -732,7 +732,7 @@ dependencies = [
 name = "platform-iqiyi"
 version = "0.3.0"
 dependencies = [
- "extract-core",
+ "extractor-core",
  "md5",
  "serde_json",
 ]
@@ -741,7 +741,7 @@ dependencies = [
 name = "platform-tencent"
 version = "0.3.0"
 dependencies = [
- "extract-core",
+ "extractor-core",
  "serde_json",
 ]
 
@@ -749,7 +749,7 @@ dependencies = [
 name = "platform-wmpvp"
 version = "0.3.0"
 dependencies = [
- "extract-core",
+ "extractor-core",
  "serde_json",
 ]
 
@@ -757,7 +757,7 @@ dependencies = [
 name = "platform-youku"
 version = "0.3.0"
 dependencies = [
- "extract-core",
+ "extractor-core",
  "serde_json",
 ]
 
@@ -765,7 +765,7 @@ dependencies = [
 name = "platform-youtube"
 version = "0.3.0"
 dependencies = [
- "extract-core",
+ "extractor-core",
  "serde_json",
 ]
 

@@ -8,13 +8,13 @@
 //!   kinds of content exist on that site and what URL shapes identify them.
 //!
 //! Everything else (cookie codec, storage, pooling, rotation, HTTP) is generic
-//! and lives in `extract-core`. Splitting per platform means adding a site is
+//! and lives in `extractor-core`. Splitting per platform means adding a site is
 //! adding a crate, and a site's quirks cannot leak into another's code.
 //!
 //! ## Why descriptors are data, not dispatch
 //!
 //! A descriptor advertises *what could handle this input*; it never selects.
-//! The caller picks an extractor id explicitly (see `extract-core::registry`).
+//! The caller picks an extractor id explicitly (see `extractor-core::registry`).
 //! This is deliberate: bilibili hosts videos, articles, opus posts, audio and
 //! live rooms on one domain, so "first match wins" would silently send an
 //! article to the video path. Advertising candidates and letting the caller

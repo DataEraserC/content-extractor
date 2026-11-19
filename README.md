@@ -1,4 +1,4 @@
-# content-extract
+# content-extractor
 
 Harness-independent **content extraction** with per-platform login.
 
@@ -43,7 +43,7 @@ must not do is pretend the ambiguity was not there.
 
 ```
 crates/
-  extract-core/          kernel: provider contract, registry, cookie codec,
+  extractor-core/          kernel: provider contract, registry, cookie codec,
                          account pool, sessions, HTTP — names NO platform
   platform-bilibili/     bilibili: login + 5 content extractors
   platform-youtube/      YouTube: login + 4 extractors
@@ -54,8 +54,8 @@ crates/
   platform-wmpvp/        完美世界电竞 (news.wmpvp.com): video / image-text post
   platform-astralparty/  吉星派对: public match-replay files
   platform-generic/      any host: cookie import + file / yt-dlp catch-alls
-  extract-abi/           effects + composition root; the C ABI (libextract.so)
-  extract-cli/           the `cx` binary
+  extractor-abi/           effects + composition root; the C ABI (libextractor.so)
+  extractor-cli/           the `cx` binary
 hosts/dsh/               the DeepSeek Harness plugin (JS extractors + UI)
 ```
 
@@ -67,8 +67,8 @@ code and adding a site is adding a crate.
 CDN is `feimogames.com`. "Which site is this?" must be answerable from the
 directory name alone; `platform-pwp` was not, so it was renamed.
 
-`extract-core` holds the shared machinery and is handed the platform list by
-`extract-abi` — the kernel itself names none of them.
+`extractor-core` holds the shared machinery and is handed the platform list by
+`extractor-abi` — the kernel itself names none of them.
 
 Two boundary tests enforce this on every build:
 
@@ -173,8 +173,8 @@ stayed anonymous.
 
 ## Storage
 
-One root: `$EXTRACT_HOME` → `$VLOGIN_HOME` (legacy) →
-`$XDG_DATA_HOME/content-extract` → `~/.local/share/content-extract`, falling back
+One root: `$EXTRACTOR_HOME` → `$VLOGIN_HOME` (legacy) →
+`$XDG_DATA_HOME/content-extractor` → `~/.local/share/content-extractor`, falling back
 to an existing `video-login` directory so an upgrade does not orphan credentials.
 
 ```
@@ -192,8 +192,8 @@ one-shot CLI invocations and stateless HTTP requests.
 Two symbols, JSON in, JSON out:
 
 ```c
-const char *extract_version(void);
-int64_t     extract_call(const char *request, char *out, uint64_t out_len);
+const char *extractor_version(void);
+int64_t     extractor_call(const char *request, char *out, uint64_t out_len);
 ```
 
 The caller owns the output buffer; Rust only writes into it, and there is

@@ -1,6 +1,6 @@
 //! The core names no harness.
 //!
-//! `extract-core` is reached through a C ABI so that a CLI, a dsh plugin or a
+//! `extractor-core` is reached through a C ABI so that a CLI, a dsh plugin or a
 //! Python script can all use it. That promise is only worth something if the
 //! crate keeps no knowledge of any of its callers — and the easiest way to
 //! lose it is a convenience. A fallback to "wherever that one harness puts its
@@ -16,7 +16,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Tokens that must never appear in `extract-core` code.
+/// Tokens that must never appear in `extractor-core` code.
 ///
 /// `dsh` alone would match nothing useful and too much else, so these are the
 /// forms a real dependency takes: an environment variable, a package prefix, or
@@ -102,9 +102,9 @@ fn core_names_no_harness() {
 
     assert!(
         violations.is_empty(),
-        "extract-core must not name a harness: it is reached through a C ABI and \
+        "extractor-core must not name a harness: it is reached through a C ABI and \
          is used by a CLI as well as by the dsh plugin. A harness-specific \
-         default belongs in the adapter, which exports it into EXTRACT_HOME:\n  {}",
+         default belongs in the adapter, which exports it into EXTRACTOR_HOME:\n  {}",
         violations.join("\n  ")
     );
 }

@@ -1,4 +1,4 @@
-//! Filesystem and environment effects, the half `extract-core` refuses to have.
+//! Filesystem and environment effects, the half `extractor-core` refuses to have.
 //!
 //! Two things live here:
 //!
@@ -6,18 +6,18 @@
 //!   session files. The core decides *what* and *where*; this performs the
 //!   write and sets the mode, which is why the 0600/0700 guarantee is enforced
 //!   on this side of the boundary.
-//! * [`resolve_root`] — turning `EXTRACT_HOME` / `XDG_DATA_HOME` / `HOME` into a
+//! * [`resolve_root`] — turning `EXTRACTOR_HOME` / `XDG_DATA_HOME` / `HOME` into a
 //!   directory. That is a machine-local decision, so it is here and not in the
 //!   core, which is the whole point of the split.
 //!
 //! The on-disk layout itself is unchanged and is documented in
-//! `extract_core::store`: `accounts/<channel>.json`, `accounts/<channel>.jar.txt`,
+//! `extractor_core::store`: `accounts/<channel>.json`, `accounts/<channel>.jar.txt`,
 //! the read-only legacy `cookies/` import, and `sessions/<id>.json`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use extract_core::{Error, Result, Storage};
+use extractor_core::{Error, Result, Storage};
 
 /// The real filesystem, with the permission bits the layout promises.
 #[derive(Debug, Default, Clone, Copy)]
@@ -83,19 +83,19 @@ fn set_mode(_path: &Path, _mode: u32) -> Result<()> {
 
 /// Resolve the state root from the environment.
 ///
-/// Precedence: `$EXTRACT_HOME` → `$VLOGIN_HOME` (legacy) →
-/// `$XDG_DATA_HOME/content-extract` → `~/.local/share/content-extract`,
+/// Precedence: `$EXTRACTOR_HOME` → `$VLOGIN_HOME` (legacy) →
+/// `$XDG_DATA_HOME/content-extractor` → `~/.local/share/content-extractor`,
 /// falling back to the legacy `video-login` directory when it already exists
 /// so an upgrade does not orphan stored credentials.
 ///
 /// The library is harness-independent and stays that way, so it knows nothing
 /// about any harness's own home variable. A harness that keeps its state
-/// somewhere else exports that into `EXTRACT_HOME` before the first call; that
+/// somewhere else exports that into `EXTRACTOR_HOME` before the first call; that
 /// is what the host adapter does, and it is why this preference lives in the
 /// adapter's side of the boundary rather than in the protocol layer.
 #[must_use]
 pub fn resolve_root() -> PathBuf {
-    if let Some(dir) = std::env::var_os("EXTRACT_HOME") {
+    if let Some(dir) = std::env::var_os("EXTRACTOR_HOME") {
         return PathBuf::from(dir);
     }
     // Legacy override, still honoured: an existing install sets this.
@@ -108,7 +108,7 @@ pub fn resolve_root() -> PathBuf {
     match base {
         Some(base) => {
             let legacy = base.join("video-login");
-            let current = base.join("content-extract");
+            let current = base.join("content-extractor");
             // Keep using the old directory when it holds state and the new one
             // does not exist yet; otherwise prefer the new name.
             if legacy.is_dir() && !current.exists() {
@@ -117,7 +117,7 @@ pub fn resolve_root() -> PathBuf {
                 current
             }
         }
-        None => PathBuf::from(".content-extract"),
+        None => PathBuf::from(".content-extractor"),
     }
 }
 
@@ -129,7 +129,7 @@ pub fn resolve_root() -> PathBuf {
 #[derive(Debug, Clone)]
 pub struct Machine {
     root: PathBuf,
-    ambient: extract_core::Ambient,
+    ambient: extractor_core::Ambient,
 }
 
 impl Machine {
@@ -147,7 +147,7 @@ impl Machine {
 
     /// This operation's clock and entropy.
     #[must_use]
-    pub fn ambient(&self) -> extract_core::Ambient {
+    pub fn ambient(&self) -> extractor_core::Ambient {
         self.ambient
     }
 
@@ -166,7 +166,7 @@ impl Machine {
 /// identical means the split changes no behaviour. `OsRng` would be the upgrade
 /// if a real secret ever needed minting, and it belongs on this side of the
 /// boundary either way.
-fn fresh_ambient() -> extract_core::Ambient {
+fn fresh_ambient() -> extractor_core::Ambient {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -176,12 +176,12 @@ fn fresh_ambient() -> extract_core::Ambient {
         SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
     let pid = u64::from(std::process::id());
     let tick = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let seed = extract_core::util::mix(
+    let seed = extractor_core::util::mix(
         (now_ms as u64)
             ^ pid.wrapping_mul(0x9E37_79B9_7F4A_7C15)
             ^ tick.wrapping_mul(0xBF58_476D_1CE4_E5B9),
     );
-    extract_core::Ambient::new(now_ms, seed)
+    extractor_core::Ambient::new(now_ms, seed)
 }
 
 #[cfg(test)]
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn writing_sets_0600_and_creating_a_dir_sets_0700() {
         let root = std::env::temp_dir().join(format!(
-            "extract-fsstorage-{}-{}",
+            "extractor-fsstorage-{}-{}",
             std::process::id(),
             fresh_ambient().seed()
         ));

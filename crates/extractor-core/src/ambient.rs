@@ -8,7 +8,7 @@
 //! *producing* them stays with the caller.
 //!
 //! Every provider therefore takes an [`Ambient`] argument and never asks the
-//! operating system anything. `extract-abi` is where a real clock and a real
+//! operating system anything. `extractor-abi` is where a real clock and a real
 //! entropy source are wired in.
 
 use crate::util;

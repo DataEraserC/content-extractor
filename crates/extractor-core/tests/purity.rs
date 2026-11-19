@@ -1,12 +1,12 @@
 //! The core stays a protocol layer.
 //!
-//! `extract-core` owns wire formats: platform descriptors, HTTP request and
+//! `extractor-core` owns wire formats: platform descriptors, HTTP request and
 //! response shapes, the Netscape cookie codec, the DevTools conversation, the
 //! account-pool layout. It owns no machine-local decision. Reading a file,
 //! writing one, resolving a state root out of the environment, spawning a
 //! process, binding a listener, reading a clock, drawing entropy, printing to a
-//! terminal — every one of those belongs to `extract-abi` (effects behind the
-//! frozen C ABI) or `extract-cli` (a human at a terminal). The core takes its
+//! terminal — every one of those belongs to `extractor-abi` (effects behind the
+//! frozen C ABI) or `extractor-cli` (a human at a terminal). The core takes its
 //! inputs as `Ambient` and `&impl Storage` and returns data.
 //!
 //! This test scans every `.rs` file of the crate and fails when one of those
@@ -23,14 +23,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Primitives that must never appear in `extract-core` code.
+/// Primitives that must never appear in `extractor-core` code.
 ///
 /// Written as fragments so this file itself does not trip the scan. `std::io`
 /// is listed whole rather than as `stdin`/`stdout` separately because every
 /// terminal access in Rust reaches through it, and `File::`/`fs::` catch the
 /// compact `use std::fs as fs` evasion. `SystemTime`/`Instant` are the two ways
 /// to read a clock, and `thread_rng`/`getrandom` the two ways to draw entropy —
-/// both are injected instead ([`extract_core::Ambient`]).
+/// both are injected instead ([`extractor_core::Ambient`]).
 const FORBIDDEN: &[&str] = &[
     // Filesystem
     "std::fs",
@@ -64,7 +64,7 @@ const FORBIDDEN: &[&str] = &[
     // Telling a host where to put its state is an effect, and naming a harness
     // is what `harness_independence.rs` already forbids.
     "default_root",
-    "EXTRACT_HOME",
+    "EXTRACTOR_HOME",
     "XDG_DATA_HOME",
 ];
 
@@ -167,10 +167,10 @@ fn core_has_no_effects() {
 
     assert!(
         violations.is_empty(),
-        "extract-core must stay a protocol layer: no filesystem, environment, \
+        "extractor-core must stay a protocol layer: no filesystem, environment, \
          process, socket, terminal, clock or entropy access. Take these as \
          arguments instead — bytes through `Storage`, time and entropy through \
-         `Ambient` — and move the effect to extract-abi or extract-cli:\n  {}",
+         `Ambient` — and move the effect to extractor-abi or extractor-cli:\n  {}",
         violations.join("\n  ")
     );
 }

@@ -1,8 +1,8 @@
-// dsh-content-extract — native credential layer (koffi FFI over `content-extract`).
+// dsh-content-extractor — native credential layer (koffi FFI over `content-extractor`).
 //
 // This module is the plugin's only contact with the credential machinery.
 // Everything that knows how a site's login actually works lives in the
-// `content-extract` Rust workspace behind the C ABI frozen in that repo's
+// `content-extractor` Rust workspace behind the C ABI frozen in that repo's
 // docs/abi.md; this file loads the library and calls it. Keeping the login
 // logic out of the plugin is the point: the same library serves a CLI, a dsh
 // plugin, or any other harness, and none of them has to know what a
@@ -10,8 +10,8 @@
 //
 // The ABI has two functions and one rule:
 //
-//     int64_t  extract_call(const char *request, char *out, uint64_t out_len);
-//     const char *extract_version(void);
+//     int64_t  extractor_call(const char *request, char *out, uint64_t out_len);
+//     const char *extractor_version(void);
 //
 // The **caller owns the output buffer**. Rust only writes into it, and there is
 // deliberately no `extract_free`. (The alternative — returning a Rust-allocated
@@ -19,7 +19,7 @@
 // agree, and every forgetful binding leaks. A caller-owned buffer has neither
 // problem; the only cost is one extra call if the first buffer was too small.)
 //
-// `extract_call` returns the size the response occupies **including** the
+// `extractor_call` returns the size the response occupies **including** the
 // trailing NUL, so:
 //
 //   * `> 0` — the response is this many bytes. It was copied into `out` only if
@@ -29,7 +29,7 @@
 // Nothing is loaded at import time. A plugin whose native library is missing
 // still registers its tools, and every login call fails with
 // `NativeError('unavailable', …)` naming what to build or where to point
-// `EXTRACT_NATIVE_LIB` — never with a crash on import.
+// `EXTRACTOR_NATIVE_LIB` — never with a crash on import.
 //
 // ## Why the first buffer is 1 MiB
 //
@@ -99,17 +99,17 @@ const loader = { done: false, api: null, error: null }
 /** @returns {string[]} candidate file names for the current platform. */
 function libraryFileNames() {
   const own = process.platform === 'darwin'
-    ? 'libextract.dylib'
+    ? 'libextractor.dylib'
     : process.platform === 'win32'
-      ? 'extract.dll'
-      : 'libextract.so'
-  const all = [own, 'libextract.so', 'libextract.dylib', 'extract.dll', 'libextract.dll']
+      ? 'extractor.dll'
+      : 'libextractor.so'
+  const all = [own, 'libextractor.so', 'libextractor.dylib', 'extractor.dll', 'libextractor.dll']
   return [...new Set(all)]
 }
 
 /**
  * Where the library may live, in the order the plugin documents:
- * `$EXTRACT_NATIVE_LIB`, then the packaged `native/` directory, then the
+ * `$EXTRACTOR_NATIVE_LIB`, then the packaged `native/` directory, then the
  * directory holding this file, then the package root.
  * @returns {string[]} absolute candidate paths.
  */
@@ -126,13 +126,13 @@ function bundledCandidates() {
 /**
  * Pick the library to load.
  * @returns {string} an absolute path, or a bare file name for the platform loader.
- * @throws {NativeError} when `EXTRACT_NATIVE_LIB` names a file that does not exist.
+ * @throws {NativeError} when `EXTRACTOR_NATIVE_LIB` names a file that does not exist.
  */
 function pickLibrary() {
-  const explicit = String(process.env.EXTRACT_NATIVE_LIB ?? '').trim()
+  const explicit = String(process.env.EXTRACTOR_NATIVE_LIB ?? '').trim()
   if (explicit) {
     if (!existsSync(explicit)) {
-      throw new NativeError('unavailable', `EXTRACT_NATIVE_LIB points at ${explicit}, which does not exist`)
+      throw new NativeError('unavailable', `EXTRACTOR_NATIVE_LIB points at ${explicit}, which does not exist`)
     }
     return explicit
   }
@@ -153,7 +153,7 @@ function pickLibrary() {
  * Tell the library where this harness keeps its state, before it is asked for
  * anything.
  *
- * The library is harness-independent: it resolves its root from `EXTRACT_HOME`
+ * The library is harness-independent: it resolves its root from `EXTRACTOR_HOME`
  * and otherwise XDG, and it does not know `DSH_HOME` exists. The dsh-specific
  * knowledge therefore belongs here, in the adapter, and crosses the boundary as
  * an environment variable the library already understands. Silence when the
@@ -163,7 +163,7 @@ function pickLibrary() {
  */
 function exportStateHome() {
   const dir = dshStateDir()
-  if (dir) process.env.EXTRACT_HOME = dir
+  if (dir) process.env.EXTRACTOR_HOME = dir
 }
 
 function ensureApi() {
@@ -187,27 +187,27 @@ function ensureApi() {
     } catch (error) {
       throw new NativeError(
         'unavailable',
-        `cannot load libextract from ${path} (${error.message}); build the Rust half (cargo build --release -p extract-abi) or point EXTRACT_NATIVE_LIB at the library`,
+        `cannot load libextractor from ${path} (${error.message}); build the Rust half (cargo build --release -p extractor-abi) or point EXTRACTOR_NATIVE_LIB at the library`,
       )
     }
     let versionSymbol
     let callSymbol
     try {
-      versionSymbol = library.func('extract_version', 'const char *', [])
+      versionSymbol = library.func('extractor_version', 'const char *', [])
       // The output parameter is declared `void *` rather than `char *`: a
       // `char *` is a string to koffi, and it would try to copy a *string out
       // of* an uninitialized buffer. `void *` passes our allocation through
       // untouched, which is what a caller-allocated buffer needs.
-      callSymbol = library.func('extract_call', 'int64', ['const char *', 'void *', 'uint64'])
+      callSymbol = library.func('extractor_call', 'int64', ['const char *', 'void *', 'uint64'])
     } catch (error) {
-      throw new NativeError('unavailable', `${path} does not export the content-extract ABI (${error.message})`)
+      throw new NativeError('unavailable', `${path} does not export the content-extractor ABI (${error.message})`)
     }
     const version = String(versionSymbol() ?? '').trim()
     const [major, minor] = version.split('.').map((part) => Number.parseInt(part, 10))
     if (major !== ABI_MAJOR || minor !== ABI_MINOR) {
       throw new NativeError(
         'unavailable',
-        `${path} reports content-extract ${version || '(no version)'}, but this plugin speaks ${ABI_VERSION}; install the matching library or set EXTRACT_NATIVE_LIB`,
+        `${path} reports content-extractor ${version || '(no version)'}, but this plugin speaks ${ABI_VERSION}; install the matching library or set EXTRACTOR_NATIVE_LIB`,
       )
     }
     loader.api = { path, version, call: callSymbol }
@@ -253,14 +253,14 @@ function decode(text, op) {
 }
 
 /**
- * Read back what `extract_call` wrote into `buffer`.
+ * Read back what `extractor_call` wrote into `buffer`.
  *
  * `needed` is the byte count the ABI reports, NUL included; the text is the
  * part before the NUL. Note that it is a **byte** count while JS strings are
  * measured in code units, so `text.length` is routinely smaller than
  * `needed - 1` for a response containing non-ASCII labels.
  * @param {unknown} buffer - koffi-allocated memory.
- * @param {number|bigint} needed - what `extract_call` returned.
+ * @param {number|bigint} needed - what `extractor_call` returned.
  * @param {string} op - operation name, for error messages.
  * @returns {string} the response text.
  */
@@ -278,7 +278,7 @@ function readBuffer(buffer, needed, op) {
  * Perform one call on a worker thread (koffi's `.async` member takes a
  * node-style callback last), so the event loop is never blocked. A QR poll can
  * sit for minutes.
- * @param {Function} fn - the `extract_call` symbol.
+ * @param {Function} fn - the `extractor_call` symbol.
  * @param {string} op - operation name.
  * @param {string} requestJson - the whole request object as JSON text.
  * @returns {Promise<*>} the op's `result`.
@@ -300,7 +300,7 @@ function invokeAsync(fn, op, requestJson) {
         fn.async(requestJson, buffer, size, (error, needed) => {
           try {
             if (error) {
-              reject(new NativeError('internal', `extract_call(${op}) failed: ${error.message}`, { cause: error }))
+              reject(new NativeError('internal', `extractor_call(${op}) failed: ${error.message}`, { cause: error }))
               return
             }
             const want = Number(needed)
@@ -330,7 +330,7 @@ function invokeAsync(fn, op, requestJson) {
         try {
           koffi.free(buffer)
         } catch { /* nothing to release */ }
-        reject(new NativeError('internal', `extract_call(${op}) could not be started: ${error.message}`, { cause: error }))
+        reject(new NativeError('internal', `extractor_call(${op}) could not be started: ${error.message}`, { cause: error }))
       }
     }
     attempt()

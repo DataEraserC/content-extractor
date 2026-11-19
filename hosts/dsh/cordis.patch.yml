@@ -1,4 +1,4 @@
-# dsh-content-extract bundle patch: registers the plugin in a profile's layer stack.
+# dsh-content-extractor bundle patch: registers the plugin in a profile's layer stack.
 - insert:
-    - id: dsh-content-extract
-      name: 'dsh-content-extract'
+    - id: dsh-content-extractor
+      name: 'dsh-content-extractor'

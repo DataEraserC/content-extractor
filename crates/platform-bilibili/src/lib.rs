@@ -42,17 +42,17 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use extract_core::content::{ContentKind, CredentialUse, ExtractorInfo};
-use extract_core::provider::{
+use extractor_core::content::{ContentKind, CredentialUse, ExtractorInfo};
+use extractor_core::provider::{
     code_of, data_of, harvest, jar_header, jar_of, merge_jar, message_of, require_method,
     state_of, state_set, state_str, str_param, Challenge, CheckOutcome, Poll, Provider,
 };
-use extract_core::ambient::Ambient;
-use extract_core::cookies;
-use extract_core::error::{Error, Result};
-use extract_core::http;
-use extract_core::model::{ChannelInfo, FieldSpec, MethodInfo, MethodKind};
-use extract_core::util::base64_encode;
+use extractor_core::ambient::Ambient;
+use extractor_core::cookies;
+use extractor_core::error::{Error, Result};
+use extractor_core::http;
+use extractor_core::model::{ChannelInfo, FieldSpec, MethodInfo, MethodKind};
+use extractor_core::util::base64_encode;
 
 const DOMAIN: &str = "bilibili.com";
 const GENERATE_URL: &str = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate";
@@ -253,13 +253,13 @@ impl Provider for Bilibili {
         }
     }
 
-    fn poll(&self, session: &mut extract_core::session::Session, ambient: Ambient) -> Result<Poll> {
+    fn poll(&self, session: &mut extractor_core::session::Session, ambient: Ambient) -> Result<Poll> {
         let key = state_str(session, "key");
         if key.is_empty() {
             return Err(Error::channel("this session has no qrcode key"));
         }
         let mut query = String::new();
-        extract_core::http::push_query(&mut query, "qrcode_key", &key);
+        extractor_core::http::push_query(&mut query, "qrcode_key", &key);
         let url = format!("{POLL_URL}{query}");
 
         let cookie = jar_header(session);
@@ -310,7 +310,7 @@ impl Provider for Bilibili {
 
     fn submit(
         &self,
-        session: &mut extract_core::session::Session,
+        session: &mut extractor_core::session::Session,
         params: &Value,
         ambient: Ambient,
     ) -> Result<Poll> {
@@ -400,7 +400,7 @@ fn captcha_token() -> Result<String> {
 }
 
 /// SMS step 1: ask bilibili to text a code to `tel`.
-fn sms_send(session: &mut extract_core::session::Session, tel: &str, ambient: Ambient) -> Result<Poll> {
+fn sms_send(session: &mut extractor_core::session::Session, tel: &str, ambient: Ambient) -> Result<Poll> {
     let token = state_str(session, "captchaToken");
     let response = http::post_form(
         SMS_SEND_URL,
@@ -429,7 +429,7 @@ fn sms_send(session: &mut extract_core::session::Session, tel: &str, ambient: Am
 }
 
 /// SMS step 2: exchange the code for a login.
-fn sms_login(session: &mut extract_core::session::Session, code: &str, ambient: Ambient) -> Result<Poll> {
+fn sms_login(session: &mut extractor_core::session::Session, code: &str, ambient: Ambient) -> Result<Poll> {
     let tel = state_str(session, "tel");
     let response = http::post_form(
         SMS_LOGIN_URL,
@@ -447,7 +447,7 @@ fn sms_login(session: &mut extract_core::session::Session, code: &str, ambient: 
 
 /// Password login: RSA-encrypt `salt + password` and post it.
 fn password_login(
-    session: &mut extract_core::session::Session,
+    session: &mut extractor_core::session::Session,
     username: &str,
     password: &str,
     ambient: Ambient,
@@ -494,7 +494,7 @@ fn password_login(
 /// Shared tail of the credential methods: check the API code, harvest cookies
 /// from the response or its redirect hop, then confirm with the nav API.
 fn finish_login(
-    session: &mut extract_core::session::Session,
+    session: &mut extractor_core::session::Session,
     response: &http::Response,
     ambient: Ambient,
 ) -> Result<Poll> {

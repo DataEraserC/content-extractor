@@ -2,8 +2,8 @@
 // the official `plugins.row.config` form (no route needed), while login and the
 // QR image need their own endpoints because they are not configuration.
 //
-// Two carriers, same handlers: the browser reaches them as /content-extract/*
-// on the web host, and as /api/content-extract/* through the desktop connection.
+// Two carriers, same handlers: the browser reaches them as /content-extractor/*
+// on the web host, and as /api/content-extractor/* through the desktop connection.
 //
 // ## What changed
 //
@@ -330,7 +330,7 @@ export function buildRoutes(ctx, config) {
   }
 
   /**
-   * The registered content extractors — what `content_extract` can handle.
+   * The registered content extractors — what `content_extractor` can handle.
    * Pure registry read; no native library needed.
    */
   const extractorsHandler = async (_req, res) => {
@@ -353,22 +353,22 @@ export function buildRoutes(ctx, config) {
   }
 
   return [
-    { path: '/content-extract/state', handler: stateHandler },
-    { path: '/content-extract/set', handler: setHandler },
-    { path: '/content-extract/reset', handler: resetHandler },
-    { path: '/content-extract/extractors', handler: extractorsHandler },
-    { path: '/content-extract/candidates', handler: candidatesHandler },
-    { path: '/content-extract/login/status', handler: loginStatus },
-    { path: '/content-extract/login/start', handler: loginStart },
-    { path: '/content-extract/login/browse', handler: loginBrowse },
-    { path: '/content-extract/login/poll', handler: loginPoll },
-    { path: '/content-extract/login/submit', handler: loginSubmit },
-    { path: '/content-extract/login/import', handler: loginImport },
-    { path: '/content-extract/login/pin', handler: loginPin },
-    { path: '/content-extract/login/logout', handler: loginLogout },
-    { path: '/content-extract/login/check', handler: loginCheck },
-    { path: '/content-extract/login/cancel', handler: loginCancel },
-    { path: '/content-extract/challenge', handler: challengeImage },
+    { path: '/content-extractor/state', handler: stateHandler },
+    { path: '/content-extractor/set', handler: setHandler },
+    { path: '/content-extractor/reset', handler: resetHandler },
+    { path: '/content-extractor/extractors', handler: extractorsHandler },
+    { path: '/content-extractor/candidates', handler: candidatesHandler },
+    { path: '/content-extractor/login/status', handler: loginStatus },
+    { path: '/content-extractor/login/start', handler: loginStart },
+    { path: '/content-extractor/login/browse', handler: loginBrowse },
+    { path: '/content-extractor/login/poll', handler: loginPoll },
+    { path: '/content-extractor/login/submit', handler: loginSubmit },
+    { path: '/content-extractor/login/import', handler: loginImport },
+    { path: '/content-extractor/login/pin', handler: loginPin },
+    { path: '/content-extractor/login/logout', handler: loginLogout },
+    { path: '/content-extractor/login/check', handler: loginCheck },
+    { path: '/content-extractor/login/cancel', handler: loginCancel },
+    { path: '/content-extractor/challenge', handler: challengeImage },
   ]
 }
 

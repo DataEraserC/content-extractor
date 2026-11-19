@@ -55,7 +55,7 @@ await check('video_fetch: real bilibili download returns an existing file', asyn
 })
 
 await check('video_fetch: the download landed inside the session workspace (default subdir)', () => {
-  assert.equal(dirname(downloadedPath), join(workspace, 'dsh-content-extract'), 'expected the workspace default subdir')
+  assert.equal(dirname(downloadedPath), join(workspace, 'dsh-content-extractor'), 'expected the workspace default subdir')
 })
 
 await check('video_fetch: second run returns the same file without re-downloading', async () => {
@@ -91,7 +91,7 @@ await check('video_login start: real QR challenge + pending state', async () => 
   assert.match(r.text, /sessionId: \S+/, `no session in result:\n${r.text}`)
   assert.match(r.text, /QR payload: https?:\/\//, 'no QR payload to scan')
   lastSessionId = r.text.match(/sessionId: (\S+)/)[1]
-  const sessionFile = join(process.env.DSH_HOME, 'content-extract', 'sessions', `${lastSessionId}.json`)
+  const sessionFile = join(process.env.DSH_HOME, 'content-extractor', 'sessions', `${lastSessionId}.json`)
   assert.ok(existsSync(sessionFile), `session file missing: ${sessionFile}`)
   const state = JSON.parse(readFileSync(sessionFile, 'utf8'))
   assert.ok(state.state?.qrcode_key || state.state?.jar !== undefined, 'no provider state persisted')

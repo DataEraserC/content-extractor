@@ -2,17 +2,17 @@
 //!
 //! Every method here maps 1:1 onto an ABI op and a CLI subcommand, so there is a
 //! single surface to document and test. The method bodies are the ones that used
-//! to live on `extract_core::Hub`: what changed is that the state root, the
+//! to live on `extractor_core::Hub`: what changed is that the state root, the
 //! clock, the entropy and the browser are now supplied by this crate instead of
 //! discovered inside the protocol layer. The behaviour and the JSON are
 //! unchanged.
 
 use serde_json::Value;
 
-use extract_core::provider;
-use extract_core::model::{Challenge, Poll};
-use extract_core::session::Session;
-use extract_core::{
+use extractor_core::provider;
+use extractor_core::model::{Challenge, Poll};
+use extractor_core::session::Session;
+use extractor_core::{
     AccountView, Ambient, Error, PlatformStatus, Pool, PollResponse, Registry, Result,
     StartRequest, StartResponse,
 };
@@ -22,10 +22,10 @@ use crate::effect::Machine;
 
 /// The platforms this build links, in picker order (`generic` last).
 ///
-/// This is the composition root: `extract-core` names no platform, so the list
+/// This is the composition root: `extractor-core` names no platform, so the list
 /// lives here. Adding a site means adding its crate to `Cargo.toml` and one
 /// line below.
-fn platforms() -> Vec<std::sync::Arc<dyn extract_core::Provider>> {
+fn platforms() -> Vec<std::sync::Arc<dyn extractor_core::Provider>> {
     vec![
         platform_bilibili::Bilibili::new(),
         platform_douyin::Douyin::new(),
@@ -78,7 +78,7 @@ impl Service {
 
     /// The account pool, bound to this machine's storage.
     fn pool(&self) -> Pool<'_, crate::effect::FsStorage> {
-        Pool::new(extract_core::Store::new(self.machine.root()), &self.storage)
+        Pool::new(extractor_core::Store::new(self.machine.root()), &self.storage)
     }
 
     /// Session directory for this machine.
@@ -88,13 +88,13 @@ impl Service {
 
     /// All platforms, in picker order, `generic` last.
     #[must_use]
-    pub fn platforms(&self) -> Vec<extract_core::ChannelInfo> {
+    pub fn platforms(&self) -> Vec<extractor_core::ChannelInfo> {
         self.registry.platforms()
     }
 
     /// Advertised platforms without `generic`.
     #[must_use]
-    pub fn site_platforms(&self) -> Vec<extract_core::ChannelInfo> {
+    pub fn site_platforms(&self) -> Vec<extractor_core::ChannelInfo> {
         self.registry.site_platforms()
     }
 
@@ -201,7 +201,7 @@ impl Service {
         let host_refs: Vec<&str> = hosts.iter().map(|s| s.as_str()).collect();
 
         match browser::cookies(port, &host_refs) {
-            Ok(cookies) if extract_core::cookies::count_netscape_cookies(&cookies) > 0 => {
+            Ok(cookies) if extractor_core::cookies::count_netscape_cookies(&cookies) > 0 => {
                 let provider = self.registry.provider(&session.channel)?;
                 let identity =
                     provider.check(&cookies).map(|outcome| outcome.identity).unwrap_or_default();
@@ -270,9 +270,9 @@ impl Service {
             None => pool.active(platform, self.ambient())?,
         };
         let status = match provider.check(&account.cookies) {
-            Ok(outcome) if outcome.logged_in => extract_core::AccountStatus::Active,
-            Ok(_) => extract_core::AccountStatus::Expired,
-            Err(_) => extract_core::AccountStatus::Unreachable,
+            Ok(outcome) if outcome.logged_in => extractor_core::AccountStatus::Active,
+            Ok(_) => extractor_core::AccountStatus::Expired,
+            Err(_) => extractor_core::AccountStatus::Unreachable,
         };
         let mut view = account.view();
         view.status = status;
@@ -306,7 +306,7 @@ impl Service {
 
     /// Every advertised content extractor.
     #[must_use]
-    pub fn extractors(&self) -> Vec<extract_core::ExtractorInfo> {
+    pub fn extractors(&self) -> Vec<extractor_core::ExtractorInfo> {
         self.registry.extractors().to_vec()
     }
 
@@ -315,12 +315,12 @@ impl Service {
     /// Never selects; the caller reads the list and passes an explicit id to
     /// [`Self::resolve_extractor`].
     #[must_use]
-    pub fn candidates(&self, url: &str) -> Vec<extract_core::Candidate> {
+    pub fn candidates(&self, url: &str) -> Vec<extractor_core::Candidate> {
         self.registry.candidates(url)
     }
 
     /// Resolve an explicitly chosen extractor id, or refuse with the known list.
-    pub fn resolve_extractor(&self, id: &str) -> Result<extract_core::ExtractorInfo> {
+    pub fn resolve_extractor(&self, id: &str) -> Result<extractor_core::ExtractorInfo> {
         self.registry.extractor(id).cloned()
     }
 
@@ -388,6 +388,6 @@ impl Service {
 
     /// Delete expired session files.
     pub fn sweep(&self) -> Result<usize> {
-        self.pool().sweep_sessions(extract_core::session::DEFAULT_TTL_MS, self.ambient())
+        self.pool().sweep_sessions(extractor_core::session::DEFAULT_TTL_MS, self.ambient())
     }
 }

@@ -1,27 +1,27 @@
 [package]
-name = "extract-abi"
+name = "extractor-abi"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "C ABI over extract-core plus the linked platforms: one JSON call in, one JSON string out"
+description = "C ABI over extractor-core plus the linked platforms: one JSON call in, one JSON string out"
 
 [lib]
-# Fixed to the on-disk library name: `libextract.so`. A cdylib keeps the
+# Fixed to the on-disk library name: `libextractor.so`. A cdylib keeps the
 # surface C-callable from koffi/ctypes/FFI without a second wrapper crate.
 #
-# `rlib` is here for the CLI: `extract-cli` is a second host of the same
+# `rlib` is here for the CLI: `extractor-cli` is a second host of the same
 # effects, and re-deriving the state root, the clock and the browser launch in
 # it would be a second implementation of everything this crate exists to own.
-name = "extract"
+name = "extractor"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-extract-core = { workspace = true }
+extractor-core = { workspace = true }
 serde_json = { workspace = true }
 
 # The composition root: this crate is where platforms are linked together.
-# extract-core names none of them, which is what keeps the kernel platform-free.
+# extractor-core names none of them, which is what keeps the kernel platform-free.
 platform-bilibili = { path = "../platform-bilibili" }
 platform-youtube = { path = "../platform-youtube" }
 platform-douyin = { path = "../platform-douyin" }
@@ -34,7 +34,7 @@ platform-astralparty = { path = "../platform-astralparty" }
 
 # Loopback CDP only, so no TLS feature is needed. The socket lives on this side
 # of the boundary because opening one is an effect; the frame and reply shapes
-# are in `extract_core::browser`.
+# are in `extractor_core::browser`.
 tungstenite = { version = "0.26", default-features = false, features = [
     "handshake",
 ] }

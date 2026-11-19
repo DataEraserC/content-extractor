@@ -20,7 +20,7 @@
 //! This module decides *what* is in a pool, *when* it is stale, and *which*
 //! account is pinned. Touching a disk is an effect, so the few operations that
 //! need one go through [`Storage`]: the core names the read and the write, and
-//! `extract-abi` performs them. Everything else here is a pure function over
+//! `extractor-abi` performs them. Everything else here is a pure function over
 //! `AccountFile`, which is what the `pool_policy` tests exercise.
 //!
 //! Secrets boundary: every file the layout describes is created 0600 inside a

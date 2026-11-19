@@ -29,12 +29,12 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use extract_core::provider::{require_method, Challenge, CheckOutcome, Provider};
-use extract_core::content::{ContentKind, CredentialUse, ExtractorInfo};
-use extract_core::ambient::Ambient;
-use extract_core::cookies;
-use extract_core::error::{Error, Result};
-use extract_core::model::{ChannelInfo, MethodInfo, MethodKind};
+use extractor_core::provider::{require_method, Challenge, CheckOutcome, Provider};
+use extractor_core::content::{ContentKind, CredentialUse, ExtractorInfo};
+use extractor_core::ambient::Ambient;
+use extractor_core::cookies;
+use extractor_core::error::{Error, Result};
+use extractor_core::model::{ChannelInfo, MethodInfo, MethodKind};
 
 const DOMAIN: &str = "youtube.com";
 

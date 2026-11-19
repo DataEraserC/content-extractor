@@ -1,6 +1,6 @@
 //! Launching a browser and talking CDP to it — the effects half.
 //!
-//! `extract_core::browser` owns what the conversation *looks like*: the DevTools
+//! `extractor_core::browser` owns what the conversation *looks like*: the DevTools
 //! URLs, the request body, how a target list picks a page, how a cookie list
 //! becomes Netscape text. This module owns everything that touches the machine:
 //! finding a binary on `$PATH`, reserving a loopback port, spawning the child,
@@ -30,8 +30,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use extract_core::browser::{self, CHROMIUM_NAMES, EXTRA_DIRS, LAUNCH_POLL_MS, LAUNCH_TIMEOUT_MS};
-use extract_core::{Error, Result};
+use extractor_core::browser::{self, CHROMIUM_NAMES, EXTRA_DIRS, LAUNCH_POLL_MS, LAUNCH_TIMEOUT_MS};
+use extractor_core::{Error, Result};
 
 /// A browser we launched and can still talk to / kill.
 pub struct BrowserHandle {
@@ -178,7 +178,7 @@ fn http_get(url: &str) -> Result<String> {
 /// A new connection per call is deliberate: it keeps no connection state that
 /// would have to survive across process invocations, and DevTools allows many
 /// concurrent clients. The socket is blocking, so the caller's own deadline is
-/// what bounds this. The reply *shape* is parsed in `extract_core::browser`;
+/// what bounds this. The reply *shape* is parsed in `extractor_core::browser`;
 /// this only moves bytes.
 fn cdp_call(ws_url: &str, request: &str) -> Result<serde_json::Value> {
     use tungstenite::{connect, Message};
@@ -245,6 +245,6 @@ mod tests {
         // Every unix has `sh` in $PATH; the point is that the search works
         // rather than that a specific browser is installed in CI.
         assert!(which("sh").is_some());
-        assert!(which("definitely-not-a-real-binary-extract").is_none());
+        assert!(which("definitely-not-a-real-binary-extractor").is_none());
     }
 }

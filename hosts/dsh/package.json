@@ -1,5 +1,5 @@
 {
-  "name": "dsh-content-extract",
+  "name": "dsh-content-extractor",
   "version": "0.6.0",
   "description": "Content extraction for DeepSeek Harness: per-platform extractors (video, article, post, replay, file) with an open metadata map, explicit extractor selection, and optional ffmpeg compression",
   "type": "module",
@@ -45,13 +45,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DataEraserC/content-extract.git"
+    "url": "git+https://github.com/DataEraserC/content-extractor.git"
   },
   "keywords": [
     "dsh",
     "deepseek-harness",
     "cordis",
-    "content-extraction",
+    "content-extractorion",
     "yt-dlp",
     "bilibili",
     "article"

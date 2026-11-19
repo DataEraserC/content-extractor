@@ -1,4 +1,4 @@
-// dsh-content-extract — content extraction for DeepSeek Harness.
+// dsh-content-extractor — content extraction for DeepSeek Harness.
 //
 // Model tools:
 //   video_fetch    yt-dlp download (any site yt-dlp supports) with metadata,
@@ -8,7 +8,7 @@
 //                  the session workspace only (see downloadDirOf);
 //   content_candidates  asks who COULD handle a url/id — plural, ranked,
 //                  advisory; it never selects (lib/content/registry.js);
-//   content_extract  extracts with an EXPLICITLY chosen extractor id: video,
+//   content_extractor  extracts with an EXPLICITLY chosen extractor id: video,
 //                  audio, articles, opus posts, replays, direct files.
 //                  Results carry an OPEN metadata map;
 //   content_extractors  lists every extractor with its platform and kind;
@@ -16,7 +16,7 @@
 //                  credentials live in <state>/accounts/<channel>.json (0600)
 //                  and never enter a tool result; <state> is the harness's
 //                  video-fetch directory, exported to the library (which is
-//                  harness-independent) as EXTRACT_HOME — see lib/state.js;
+//                  harness-independent) as EXTRACTOR_HOME — see lib/state.js;
 //   video_compress ffmpeg re-encode of any local file (CRF / height cap from
 //                  plugin config, not from Nix).
 //
@@ -42,7 +42,7 @@ import { isRegularFile } from './proc.js'
 import { buildRoutes } from './routes.js'
 import { EDITABLE_KEYS, applyPatch, coercePatch, plain, resetFields, snapshot } from './settings.js'
 
-export const name = 'dsh-content-extract'
+export const name = 'dsh-content-extractor'
 
 export const inject = ['tools']
 
@@ -51,7 +51,7 @@ export const Config = z.object({
   // write updates the RUNNING plugin in place (Loader commits volatile refs
   // and emits `loader/volatile-update`). Binaries and deadlines are ordinary
   // fields on purpose — changing them needs a restart.
-  /** Download subdir, resolved INSIDE the session workspace (`dsh-content-extract` when empty). */
+  /** Download subdir, resolved INSIDE the session workspace (`dsh-content-extractor` when empty). */
   downloadDir: z.string().default('').volatile(),
   /** yt-dlp format selector. */
   format: z.string().default('bv*+ba/b').volatile(),
@@ -123,7 +123,7 @@ function nearestReal(p) {
 
 /**
  * Resolve the download directory — always INSIDE the session workspace.
- * `downloadDir` is workspace-relative (`dsh-content-extract` when empty); absolute
+ * `downloadDir` is workspace-relative (`dsh-content-extractor` when empty); absolute
  * paths and `..` are rejected before touching the filesystem, and the nearest
  * existing ancestor is realpath-checked so a symlink planted in the workspace
  * cannot redirect a download out of it.
@@ -143,7 +143,7 @@ export function downloadDirOf(config, exec) {
   }
   mkdirSync(workspace, { recursive: true })
   const realBase = realpathSync(workspace)
-  const dir = configured === '' ? join(workspace, 'dsh-content-extract') : resolve(workspace, configured)
+  const dir = configured === '' ? join(workspace, 'dsh-content-extractor') : resolve(workspace, configured)
   const ancestor = nearestReal(dir)
   if (ancestor === undefined || !isInside(realBase, ancestor)) {
     throw new Error(`download dir resolves outside the session workspace: ${dir}`)
@@ -309,7 +309,7 @@ export function apply(ctx, config) {
         'Pass compress: true to re-encode the download to a QQ-sendable MP4 in the same call; crf / maxHeight override the plugin settings for this call only. ' +
         'URL must be http(s). Re-running an already-downloaded URL returns the existing file instead of re-downloading. ' +
         'Files always land inside the session workspace (downloadDir is a workspace-relative subdir; absolute paths are rejected). ' +
-        'Non-video content (articles, opus posts, replays, files) uses content_candidates + content_extract; a non-video URL here is refused with the right extractor named.',
+        'Non-video content (articles, opus posts, replays, files) uses content_candidates + content_extractor; a non-video URL here is refused with the right extractor named.',
       parameters: {
         url: { type: 'string', required: true, description: 'Video page URL (http/https), e.g. https://www.bilibili.com/video/BV1xx411c7mD' },
         compress: { type: 'boolean', description: 'Also re-encode to a QQ-sendable MP4 after downloading (default false)' },
@@ -349,7 +349,7 @@ export function apply(ctx, config) {
           if (textKind && !siteVideo) {
             throw new Error(
               `this URL is ${textKind.extractor.kind} content, not a video; ` +
-              `use content_extract with extractor="${textKind.extractor.id}" instead of video_fetch`,
+              `use content_extractor with extractor="${textKind.extractor.id}" instead of video_fetch`,
             )
           }
           const result = await extractContent({
@@ -415,7 +415,7 @@ export function apply(ctx, config) {
       name: 'content_candidates',
       description:
         'Ask which extractors COULD handle a URL or id. Returns EVERY match, ranked by specificity — ' +
-        'it never picks one for you. Read the list, then call content_extract with the chosen extractor id. ' +
+        'it never picks one for you. Read the list, then call content_extractor with the chosen extractor id. ' +
         'This two-step flow exists because one host serves many content kinds: bilibili has videos, articles ' +
         '(/read/cv…), opus posts (/opus/…), audio and live rooms, and treating an article as a video fails. ' +
         'Each candidate carries id, platform, label, kind, patterns, credentials (required/enhances/none) and its known metadata keys. ' +
@@ -434,7 +434,7 @@ export function apply(ctx, config) {
         if (found.length === 0) {
           return { text: 'No extractor advertises this input. Nothing was guessed; pick another URL/id or add an extractor.' }
         }
-        const lines = [`${found.length} candidate(s), most specific first — choose one and pass it to content_extract:`]
+        const lines = [`${found.length} candidate(s), most specific first — choose one and pass it to content_extractor:`]
         for (const entry of found) {
           const e = entry.extractor
           const cred = e.credentials === 'required' ? ' (login required)'
@@ -448,7 +448,7 @@ export function apply(ctx, config) {
     }),
 
     defineTool({
-      name: 'content_extract',
+      name: 'content_extractor',
       description:
         'Extract content with an EXPLICITLY chosen extractor, returning its files plus an OPEN metadata map (JSON). ' +
         'The `extractor` id is required — there is deliberately no auto-selection; call content_candidates first ' +
@@ -469,7 +469,7 @@ export function apply(ctx, config) {
       async execute(args, exec) {
         const url = args.url === undefined || args.url === null ? '' : String(args.url)
         const id = args.id === undefined || args.id === null ? '' : String(args.id)
-        if (url === '' && id === '') throw new Error('content_extract needs a url or an id')
+        if (url === '' && id === '') throw new Error('content_extractor needs a url or an id')
         if (url !== '' && !/^https?:\/\//i.test(url)) throw new Error(`unsupported URL scheme (need http/https): ${url.slice(0, 60)}`)
         const outDir = downloadDirOf(config, exec)
         // Credentials come from the platform that owns the URL's *host*, which
@@ -515,7 +515,7 @@ export function apply(ctx, config) {
       name: 'content_extractors',
       description:
         'List every registered content extractor: id, platform, label, kind and known metadata keys. ' +
-        'Use this to discover what content_extract can handle (video, audio, article, post, replay, file, …).',
+        'Use this to discover what content_extractor can handle (video, audio, article, post, replay, file, …).',
       parameters: {},
       output,
       timeoutMs: 10000,
@@ -760,7 +760,7 @@ export function apply(ctx, config) {
   // header of lib/commands.js. This is the only surface the TUI has.
   const commands = registerCommands(ctx, config)
   if (commands === 0) {
-    ctx.logger?.debug?.('dsh-content-extract: no command registry in this composition; /video-settings and /video-login are unavailable')
+    ctx.logger?.debug?.('dsh-content-extractor: no command registry in this composition; /video-settings and /video-login are unavailable')
   }
 
   // Web surfaces. The Plugins-page card is a `plugins.row.config` slot in the
@@ -775,7 +775,7 @@ export function apply(ctx, config) {
       const disposers = routes.map((route) =>
         server.register({ kind: 'exact', path: `${prefix}${route.path}`, handler: route.handler }),
       )
-      inner.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-content-extract.web-routes')
+      inner.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-content-extractor.web-routes')
     }
     ctx.inject(['webServer'], attach((inner) => inner.get('webServer'), ''))
     // Desktop/web-over-connection carrier: same handlers under /api.
@@ -810,10 +810,10 @@ export function apply(ctx, config) {
             },
           }))
         } catch (error) {
-          ctx.logger?.warn?.(`dsh-content-extract: route ${route.path} was not registered: ${error.message}`)
+          ctx.logger?.warn?.(`dsh-content-extractor: route ${route.path} was not registered: ${error.message}`)
         }
       }
-      inner.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-content-extract.fetch-routes')
+      inner.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-content-extractor.fetch-routes')
     })
   }
 }

@@ -1,4 +1,4 @@
-// dsh-content-extract — client half (browser).
+// dsh-content-extractor — client half (browser).
 //
 // One page, mounted twice: as the configure card on the official Plugins page
 // (`plugins.row.config`, keyed by bundle#rowId) and as a tab in Settings →
@@ -11,14 +11,14 @@
 // --dsw-alias-* tokens) — no bundler, no build step.
 
 window.__ModuleLoader__.load({
-  id: 'dsh-content-extract',
+  id: 'dsh-content-extractor',
   factory: (require) => {
     var React = require('react')
     var module = { exports: {} }
     var exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
 
-    var NS = 'dsh-content-extract'
+    var NS = 'dsh-content-extractor'
     var boundTr = null
 
     /** How often the page re-checks a login that is waiting on the user. */
@@ -362,7 +362,7 @@ window.__ModuleLoader__.load({
       pollRef.current = pollOnce
 
       var refresh = React.useCallback(async function () {
-        var next = await api('GET', '/content-extract/state')
+        var next = await api('GET', '/content-extractor/state')
         setState(next)
         setDraft(next.settings || {})
         return next
@@ -446,7 +446,7 @@ window.__ModuleLoader__.load({
           return
         }
         run(async function () {
-          await api('POST', '/content-extract/set', { patch: patch })
+          await api('POST', '/content-extractor/set', { patch: patch })
           await refresh()
         }, t('saved'))
       }
@@ -454,7 +454,7 @@ window.__ModuleLoader__.load({
       function reset() {
         if (!window.confirm(t('resetHint'))) return
         run(async function () {
-          await api('POST', '/content-extract/reset', {})
+          await api('POST', '/content-extractor/reset', {})
           await refresh()
         }, t('resetDone'))
       }
@@ -515,7 +515,7 @@ window.__ModuleLoader__.load({
        */
       async function pollOnce() {
         if (session === null) return true
-        var next = await api('POST', '/content-extract/login/poll', { sessionId: session.id })
+        var next = await api('POST', '/content-extractor/login/poll', { sessionId: session.id })
         var result = next.result || {}
         if (result.status === 'done') {
           stopPolling()
@@ -567,7 +567,7 @@ window.__ModuleLoader__.load({
         setValues({})
         setNote(null)
         runLogin(async function () {
-          var next = await api('POST', '/content-extract/login/start', {
+          var next = await api('POST', '/content-extractor/login/start', {
             platform: selChannel,
             method: chosen,
             label: labelText,
@@ -590,7 +590,7 @@ window.__ModuleLoader__.load({
         setValues({})
         setNote(null)
         runLogin(async function () {
-          var next = await api('POST', '/content-extract/login/browse', { platform: selChannel })
+          var next = await api('POST', '/content-extractor/login/browse', { platform: selChannel })
           var challenge = next.challenge || {}
           setSession({ id: next.session_id, challenge: challenge })
           setTone('muted', challenge.prompt || t('browseHint'))
@@ -605,7 +605,7 @@ window.__ModuleLoader__.load({
       function submitLogin() {
         if (session === null) return
         runLogin(async function () {
-          var next = await api('POST', '/content-extract/login/submit', {
+          var next = await api('POST', '/content-extractor/login/submit', {
             sessionId: session.id,
             params: values,
           })
@@ -641,7 +641,7 @@ window.__ModuleLoader__.load({
           return
         }
         runLogin(async function () {
-          var next = await api('POST', '/content-extract/login/import', {
+          var next = await api('POST', '/content-extractor/login/import', {
             platform: selChannel,
             cookies: cookieText,
             label: labelText,
@@ -664,14 +664,14 @@ window.__ModuleLoader__.load({
         setValues({})
         setNote(null)
         runLogin(async function () {
-          await api('POST', '/content-extract/login/cancel', { sessionId: id })
+          await api('POST', '/content-extractor/login/cancel', { sessionId: id })
         })
       }
 
       /** @param {string} accountId - account to pin. */
       function pinAccount(accountId) {
         runLogin(async function () {
-          await api('POST', '/content-extract/login/pin', { platform: selChannel, account: accountId })
+          await api('POST', '/content-extractor/login/pin', { platform: selChannel, account: accountId })
           await refresh()
         })
       }
@@ -679,7 +679,7 @@ window.__ModuleLoader__.load({
       /** @param {string} accountId - account to drop. */
       function logoutAccount(accountId) {
         runLogin(async function () {
-          await api('POST', '/content-extract/login/logout', { platform: selChannel, account: accountId })
+          await api('POST', '/content-extractor/login/logout', { platform: selChannel, account: accountId })
           await refresh()
         })
       }
@@ -687,7 +687,7 @@ window.__ModuleLoader__.load({
       /** @param {string} accountId - account to probe. */
       function checkAccount(accountId) {
         runLogin(async function () {
-          var next = await api('POST', '/content-extract/login/check', { platform: selChannel, account: accountId })
+          var next = await api('POST', '/content-extractor/login/check', { platform: selChannel, account: accountId })
           var status = next.account && next.account.status
           setTone(status === 'active' ? 'ok' : 'bad', t('checkResult', { status: status || 'unknown' }))
           await refresh()
@@ -833,7 +833,7 @@ window.__ModuleLoader__.load({
         // provider needs no change here.
 
         if (session !== null && session.challenge.kind === 'qr') {
-          var qrSrc = session.challenge.image || (apiPath('/content-extract/challenge?data=' + encodeURIComponent(session.challenge.url)) + '&t=' + Date.now())
+          var qrSrc = session.challenge.image || (apiPath('/content-extractor/challenge?data=' + encodeURIComponent(session.challenge.url)) + '&t=' + Date.now())
           var qrBlock = React.createElement('div', { key: 'qr', style: { marginTop: 10 } },
             React.createElement('div', { style: { fontSize: 12, color: T.textMuted, marginBottom: 6 } }, t('scan')),
             React.createElement('img', {
@@ -1044,7 +1044,7 @@ window.__ModuleLoader__.load({
 
       // Configure card on the official Plugins page. The key is
       // `<bundle>#<rowId>`; the bundle's patch declares the row as
-      // `dsh-content-extract`, so both spellings are registered the same way
+      // `dsh-content-extractor`, so both spellings are registered the same way
       // dsh-settings-persist does.
       slots.inject('plugins.row.config', function () {
         return slots.register(

@@ -53,7 +53,7 @@ pub struct Registry {
 impl Registry {
     /// Build a registry from an explicit provider list.
     ///
-    /// The composition root (`extract-abi`) passes the platforms it linked;
+    /// The composition root (`extractor-abi`) passes the platforms it linked;
     /// this crate names none of them, which is what keeps it platform-free.
     #[must_use]
     pub fn new(providers: Vec<Arc<dyn Provider>>) -> Self {

@@ -1,6 +1,6 @@
 //! Every platform crate stays a protocol layer too.
 //!
-//! The kernel's purity rule (`extract-core/tests/purity.rs`) applies with the
+//! The kernel's purity rule (`extractor-core/tests/purity.rs`) applies with the
 //! same force to each `platform-*` crate: a site's login conversation and its
 //! content descriptors are wire formats, not machine-local decisions. A
 //! convenient `std::env::var` inside a provider is exactly the erosion this
@@ -41,7 +41,7 @@ const FORBIDDEN: &[&str] = &[
     "getrandom",
     "rand::",
     "default_root",
-    "EXTRACT_HOME",
+    "EXTRACTOR_HOME",
     "XDG_DATA_HOME",
 ];
 
@@ -90,7 +90,7 @@ fn collect_sources(dir: &Path, out: &mut Vec<PathBuf>) {
 fn crates_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .expect("extract-core lives under crates/")
+        .expect("extractor-core lives under crates/")
         .to_path_buf()
 }
 
@@ -143,7 +143,7 @@ fn every_platform_crate_is_effect_free() {
         violations.is_empty(),
         "platform crates must stay protocol layers: no filesystem, environment, \
          process, socket, terminal, clock or entropy access. Take these as \
-         arguments (Storage / Ambient) and move the effect to extract-abi:\n  {}",
+         arguments (Storage / Ambient) and move the effect to extractor-abi:\n  {}",
         violations.join("\n  ")
     );
 }

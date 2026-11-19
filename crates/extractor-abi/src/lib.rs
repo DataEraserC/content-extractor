@@ -1,13 +1,13 @@
-//! C ABI over `extract-core`.
+//! C ABI over `extractor-core`.
 //!
-//! One entry point, `extract_call`, plus `extract_version` for diagnostics. Both
+//! One entry point, `extractor_call`, plus `extractor_version` for diagnostics. Both
 //! sides speak JSON, so the FFI surface stays at two functions and a host binding
 //! is a dozen lines of koffi rather than a hand-written struct mirror of the
 //! whole model.
 //!
 //! ## Where the effects live
 //!
-//! `extract-core` is a protocol layer: it decides *what* a state root looks like,
+//! `extractor-core` is a protocol layer: it decides *what* a state root looks like,
 //! *which* account is pinned, *what* bytes a CDP request carries. It reads no
 //! file, resolves no environment variable, spawns no process and reads no clock.
 //! This crate is the other half — [`effect`] owns the filesystem and the
@@ -20,7 +20,7 @@
 //!
 //! ```c
 //! char buf[1 << 20];
-//! int64_t needed = extract_call("{\"op\":\"platforms\"}", buf, sizeof buf);
+//! int64_t needed = extractor_call("{\"op\":\"platforms\"}", buf, sizeof buf);
 //! ```
 //!
 //! The caller owns the output buffer; Rust only writes into it. There is
@@ -52,7 +52,7 @@ use std::os::raw::c_char;
 use std::ptr;
 
 use serde_json::{json, Value};
-use extract_core::{Error, StartRequest};
+use extractor_core::{Error, StartRequest};
 
 pub use crate::effect::{resolve_root, FsStorage, Machine};
 pub use crate::service::Service;
@@ -67,7 +67,7 @@ pub use crate::service::Service;
 /// `request` must be a valid pointer to a NUL-terminated C string (or null).
 /// `out` must be null or point to at least `out_len` writable bytes.
 #[no_mangle]
-pub unsafe extern "C" fn extract_call(
+pub unsafe extern "C" fn extractor_call(
     request: *const c_char,
     out: *mut c_char,
     out_len: u64,
@@ -101,7 +101,7 @@ pub unsafe extern "C" fn extract_call(
 /// Points at a `'static` array, so the pointer stays valid forever and must
 /// **not** be freed.
 #[no_mangle]
-pub extern "C" fn extract_version() -> *const c_char {
+pub extern "C" fn extractor_version() -> *const c_char {
     c"0.2.0".as_ptr()
 }
 
@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn a_null_request_is_minus_one() {
         let mut buffer = [0i8; 64];
-        let result = unsafe { extract_call(ptr::null(), buffer.as_mut_ptr(), buffer.len() as u64) };
+        let result = unsafe { extractor_call(ptr::null(), buffer.as_mut_ptr(), buffer.len() as u64) };
         assert_eq!(result, -1);
     }
 
@@ -401,12 +401,12 @@ mod tests {
     #[test]
     fn the_c_buffer_contract_reports_the_needed_size_including_the_nul() {
         let request = std::ffi::CString::new(r#"{"op":"platforms"}"#).unwrap();
-        let needed = unsafe { extract_call(request.as_ptr(), ptr::null_mut(), 0) };
+        let needed = unsafe { extractor_call(request.as_ptr(), ptr::null_mut(), 0) };
         assert!(needed > 0);
 
         let mut buffer = vec![0u8; needed as usize];
         let written = unsafe {
-            extract_call(request.as_ptr(), buffer.as_mut_ptr() as *mut c_char, buffer.len() as u64)
+            extractor_call(request.as_ptr(), buffer.as_mut_ptr() as *mut c_char, buffer.len() as u64)
         };
         assert_eq!(written, needed);
         assert_eq!(buffer[needed as usize - 1], 0, "the response is NUL-terminated");
@@ -417,7 +417,7 @@ mod tests {
         // Too small: nothing is written, and the size still comes back.
         let mut tiny = vec![0u8; 4];
         let short = unsafe {
-            extract_call(request.as_ptr(), tiny.as_mut_ptr() as *mut c_char, tiny.len() as u64)
+            extractor_call(request.as_ptr(), tiny.as_mut_ptr() as *mut c_char, tiny.len() as u64)
         };
         assert_eq!(short, needed);
         assert_eq!(tiny, vec![0u8; 4], "a too-small buffer must be left untouched");
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn version_is_the_frozen_abi_string() {
-        let version = unsafe { CStr::from_ptr(extract_version()) };
+        let version = unsafe { CStr::from_ptr(extractor_version()) };
         assert_eq!(version.to_str().unwrap(), "0.2.0");
     }
 }

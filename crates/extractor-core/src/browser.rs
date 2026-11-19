@@ -21,7 +21,7 @@
 //! how a target list picks a page's WebSocket URL, how one CDP request is
 //! framed, how a `Network.getAllCookies` reply becomes Netscape text. Opening a
 //! socket, binding a loopback port, spawning a browser and deleting a profile
-//! directory are all effects, and they live in `extract-abi`; this module gives
+//! directory are all effects, and they live in `extractor-abi`; this module gives
 //! that side the exact bytes to send and reads back the ones it gets.
 //!
 //! Secrets boundary: extracted cookies are credentials. They are returned once,
@@ -182,7 +182,7 @@ pub const EXTRA_DIRS: &[&str] = &[
 /// Name of the throwaway profile directory for a debugging port.
 #[must_use]
 pub fn profile_dir_name(port: u16) -> String {
-    format!("extract-profile-{port}")
+    format!("extractor-profile-{port}")
 }
 
 /// How long to wait for a freshly spawned browser to expose DevTools.
@@ -199,7 +199,7 @@ mod tests {
     fn devtools_urls_point_at_loopback() {
         assert_eq!(version_url(9222), "http://127.0.0.1:9222/json/version");
         assert_eq!(list_url(9222), "http://127.0.0.1:9222/json/list");
-        assert_eq!(profile_dir_name(9222), "extract-profile-9222");
+        assert_eq!(profile_dir_name(9222), "extractor-profile-9222");
     }
 
     #[test]

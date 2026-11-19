@@ -113,7 +113,7 @@ export function registerCommands(ctx, config) {
       // A plain string is what `CommandDefinitionId()` returns at runtime; the
       // brand is type-only, and importing it would add a peer dependency for
       // an identity function.
-      definitionId: 'dsh-content-extract/settings',
+      definitionId: 'dsh-content-extractor/settings',
       name: 'content-settings',
       description: 'View or change the video download settings',
       input: { hint: '[<field>=<value> … | reset [<field> …]]' },
@@ -170,7 +170,7 @@ export function registerCommands(ctx, config) {
     }),
 
     registry.register({
-      definitionId: 'dsh-content-extract/login',
+      definitionId: 'dsh-content-extractor/login',
       name: 'content-login',
       description: 'Video site login: view accounts, start a login, confirm it',
       input: { hint: '[status [<platform>] | platforms | extractors | candidates <url> | start <channel> [<method>] | poll | cancel | pin <channel> <account> | logout <channel> <account> | check [<channel>]]' },
@@ -311,7 +311,7 @@ export function registerCommands(ctx, config) {
   ]
 
   if (typeof ctx.effect === 'function') {
-    ctx.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-content-extract.commands')
+    ctx.effect(() => () => disposers.forEach((dispose) => dispose()), 'dsh-content-extractor.commands')
   }
   return disposers.length
 }

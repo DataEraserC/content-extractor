@@ -1,5 +1,5 @@
 {
-  description = "content-extract: harness-independent content extraction with per-platform login";
+  description = "content-extractor: harness-independent content extraction with per-platform login";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -48,7 +48,7 @@
 
         meta = with lib; {
           description = "Content extraction with per-platform login (bilibili, YouTube, news.wmpvp.com, ...)";
-          homepage = "https://github.com/DataEraserC/content-extract";
+          homepage = "https://github.com/DataEraserC/content-extractor";
           license = licenses.mit;
           mainProgram = "cx";
         };
@@ -66,32 +66,32 @@
             buildType = "release";
 
             # Only the CLI binary is installed; the cdylib comes from
-            # `extract-abi` below.
-            cargoBuildFlags = [ "-p" "extract-cli" ];
+            # `extractor-abi` below.
+            cargoBuildFlags = [ "-p" "extractor-cli" ];
 
             # `cargo test` needs network for nothing, so the unit tests (cookie
             # codec, ptuiCB parser) can run in the sandbox.
             checkFlags = [ ];
 
             postInstall = ''
-              install -Dm644 README.md $out/share/doc/content-extract/README.md
+              install -Dm644 README.md $out/share/doc/content-extractor/README.md
             '';
           });
 
           # The C shared library the dsh plugin loads through koffi.
-          extract-abi = pkgs.rustPlatform.buildRustPackage (common // {
-            pname = "extract-abi";
+          extractor-abi = pkgs.rustPlatform.buildRustPackage (common // {
+            pname = "extractor-abi";
             inherit cargoLock meta;
 
-            cargoBuildFlags = [ "-p" "extract-abi" ];
+            cargoBuildFlags = [ "-p" "extractor-abi" ];
 
             # buildRustPackage installs `bin/` by default; there is none here,
             # so install the cdylib by hand.
             installPhase = ''
               runHook preInstall
               mkdir -p $out/lib
-              find target -name 'libextract.so' -exec cp -v {} $out/lib/ \;
-              test -f $out/lib/libextract.so
+              find target -name 'libextractor.so' -exec cp -v {} $out/lib/ \;
+              test -f $out/lib/libextractor.so
               runHook postInstall
             '';
 
@@ -101,20 +101,20 @@
 
           # The DeepSeek Harness host: the cordis plugin, its Web UI page and
           # the koffi FFI loader, packaged as an npm bundle with the matching
-          # `libextract.so` beside it. Other harnesses get a sibling host
+          # `libextractor.so` beside it. Other harnesses get a sibling host
           # directory that links the same C ABI.
           dsh =
             let
               dshPkgs = pkgs.extend deepseek-harness.overlays.default;
               abi = pkgs.rustPlatform.buildRustPackage (common // {
-                pname = "extract-abi-native";
+                pname = "extractor-abi-native";
                 inherit cargoLock meta;
-                cargoBuildFlags = [ "-p" "extract-abi" ];
+                cargoBuildFlags = [ "-p" "extractor-abi" ];
                 installPhase = ''
                   runHook preInstall
                   mkdir -p $out/lib
-                  find target -name 'libextract.so' -exec cp -v {} $out/lib/ \;
-                  test -f $out/lib/libextract.so
+                  find target -name 'libextractor.so' -exec cp -v {} $out/lib/ \;
+                  test -f $out/lib/libextractor.so
                   runHook postInstall
                 '';
                 doCheck = false;
@@ -125,7 +125,7 @@
             # this builder writes it (schema 1, one row pointing at the plugin's
             # cordis patch and package root).
             dshPkgs.dsh.buildDshBundle (finalAttrs: {
-              pname = "dsh-content-extract";
+              pname = "dsh-content-extractor";
               version = (lib.importJSON ./hosts/dsh/package.json).version;
 
               src = ./hosts/dsh;
@@ -137,7 +137,7 @@
               # output until it was staged). Stage new files before building, and
               # check the output contains them — a green build is not proof.
 
-              npmDepsHash = "sha256-+pcztd2YUFTHxcy+Lo/gJ/bidN84tjCqhF7XwCQJNWY=";
+              npmDepsHash = "sha256-OfBbltYZqjHS0ccwIyQYXwjOGD3KeeMkw6/xvqyYrWY=";
 
               # The plugin ships prebuilt JS (no bundler step).
               dontNpmBuild = true;
@@ -150,16 +150,16 @@
               installation = dshPkgs.dsh.dsh-runtime;
 
               postInstall = ''
-                mkdir -p $out/lib/node_modules/dsh-content-extract/native
-                install -m 0755 ${abi}/lib/libextract.so \
-                  $out/lib/node_modules/dsh-content-extract/native/libextract.so
-                test -f $out/lib/node_modules/dsh-content-extract/lib/client.js
-                test -f $out/lib/node_modules/dsh-content-extract/native/libextract.so
+                mkdir -p $out/lib/node_modules/dsh-content-extractor/native
+                install -m 0755 ${abi}/lib/libextractor.so \
+                  $out/lib/node_modules/dsh-content-extractor/native/libextractor.so
+                test -f $out/lib/node_modules/dsh-content-extractor/lib/client.js
+                test -f $out/lib/node_modules/dsh-content-extractor/native/libextractor.so
               '';
 
               meta = meta // {
                 description = "Content extraction for DeepSeek Harness with per-platform login and ffmpeg compression";
-                mainProgram = "dsh-content-extract";
+                mainProgram = "dsh-content-extractor";
               };
             });
 

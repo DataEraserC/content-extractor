@@ -1,4 +1,4 @@
-# dsh-content-extract
+# dsh-content-extractor
 
 Content extraction for [DeepSeek Harness](https://github.com/deepseek-ai/dsh):
 per-platform extractors for video, articles, image-text posts, game replays and
@@ -16,7 +16,7 @@ an unsupported method returns a structured refusal instead of quietly doing
 nothing.
 
 The engine that does the work is the separate, harness-independent
-[`content-extract`](https://github.com/DataEraserC/content-extract) tool: a Rust core, a
+[`content-extractor`](https://github.com/DataEraserC/content-extractor) tool: a Rust core, a
 C ABI, and a CLI. This plugin is only the integration shell — routes, tools, and
 the page — that loads that library and calls it.
 
@@ -29,7 +29,7 @@ they cannot disagree:
 | --- | --- | --- |
 | **Web page** | `plugins.row.config` card + a Settings tab | Web GUI only (the browser half declares `platform: "web"`) |
 | **Slash commands** | `/content-settings`, `/content-login` | Web composer **and** the TUI — both dispatch through the kernel's command registry |
-| **Session tools** | `content_candidates`, `content_extract`, `content_extractors`, `video_fetch`, `video_login`, `video_compress`, `video_settings` | The model calls them, not you |
+| **Session tools** | `content_candidates`, `content_extractor`, `content_extractors`, `video_fetch`, `video_login`, `video_compress`, `video_settings` | The model calls them, not you |
 
 The page needs a browser and the TUI never renders it; the commands are the
 only surface the TUI has. Every change applies to the running plugin
@@ -41,7 +41,7 @@ immediately and survives a restart.
 | --- | --- |
 | `video_fetch` | Download any URL yt-dlp supports (bilibili, YouTube, …) with `yt-dlp`; returns the local file path **plus metadata** (title, author, id, url, description, duration, thumbnail, …) and writes a `.meta.json` sidecar next to the media. Files land inside the session workspace only (see Security). A URL owned by a login site gets its cookie jars, tried in order when one fails. `compress: true` re-encodes the result in the same call; `crf` / `maxHeight` override the settings for that call only. An already-downloaded URL returns the existing file. |
 | `content_candidates` | Asks who **could** handle a url/id. Returns EVERY match ranked by specificity; never selects. Read it, then choose. |
-| `content_extract` | Extracts with an **explicitly chosen** `extractor` id (required). Returns files plus an **open metadata map** — see below. |
+| `content_extractor` | Extracts with an **explicitly chosen** `extractor` id (required). Returns files plus an **open metadata map** — see below. |
 | `content_extractors` | Lists every extractor: id, platform, label, kind, known metadata keys. |
 | `video_login` | Per-channel login on a `channel` × `method` contract. `channel` is the site (`bilibili`, `douyin`, `youtube`, `tencent`, `iqiyi`, `youku`); `method` is how the credential arrives (`qr`, `manual`, `sms`, `password`, `browser`); each channel advertises which methods it implements. Actions: `channels` (list channels with display names + methods), `start` (begin a login, returns `sessionId` + a challenge to render), `browse` (open a browser on the server, then `poll`), `poll` (advance a login; `waitMs` blocks), `submit` (send this step's inputs), `import` (store a cookie file from disk via `path`), `status` (probe an account), `pin` (choose the active account), `logout`, `clear`, `cancel`. |
 | `video_compress` | Re-encode any local video to H.264 + AAC + faststart with a height cap, writing `<name>.small.<ext>` next to the input. |
@@ -50,7 +50,7 @@ immediately and survives a restart.
 ## The content layer (`lib/content/`)
 
 The plugin is not video-only, and it does not guess. `content_candidates` lists
-the possibilities; `content_extract` runs the one you named:
+the possibilities; `content_extractor` runs the one you named:
 
 ```js
 {
@@ -128,7 +128,7 @@ INTL: https://sereplayjp.feimogames.com/prod/<replayId>
 ```
 
 A replay id is 16 digits (unix seconds + room number); the two regions' ids
-do not overlap. `content_extract extractor="astralparty.replay" id="1795093645690603"`
+do not overlap. `content_extractor extractor="astralparty.replay" id="1795093645690603"`
 downloads the match file (`<id>.bin`) — **the deliverable is the file itself**;
 rendering a replay requires the game client, which this plugin deliberately does
 not attempt. As a convenience the extractor also parses the file without a
@@ -180,7 +180,7 @@ extractor really does not.
 The package ships a browser half (`lib/client.js`, declared as `dsh.client`), so
 it appears in the web GUI in two places:
 
-- **Plugins page** — a configure card on the `dsh-content-extract` row
+- **Plugins page** — a configure card on the `dsh-content-extractor` row
   (`plugins.row.config`), showing the summary on the row and the full page in
   its detail view.
 - **Settings → Built-in plugins** — a "Content extraction" tab
@@ -193,7 +193,7 @@ scan, a cookie-file box, phone + SMS code, username + password, or a browser
 link). Stored accounts for the channel are listed with their status and can be
 pinned or removed.
 
-It talks to the plugin's own host routes (`/content-extract/state|set|reset|login/*|
+It talks to the plugin's own host routes (`/content-extractor/state|set|reset|login/*|
 challenge`, mirrored under `/api` on the desktop connection) rather than the
 generic settings form, because login is not configuration and the session tool
 must share one writer with the page.
@@ -236,7 +236,7 @@ Tunable at runtime (volatile: a write updates the running plugin in place):
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `downloadDir` | `dsh-content-extract` | Download subdir, resolved inside the session workspace (absolute paths rejected) |
+| `downloadDir` | `dsh-content-extractor` | Download subdir, resolved inside the session workspace (absolute paths rejected) |
 | `format` | `bv*+ba/b` | yt-dlp format selector |
 | `crf` / `maxHeight` / `audioBitrate` / `preset` | 26 / 720 / `128k` / `medium` | ffmpeg re-encode settings |
 | `downloadEngine` | `ytdlp` | Which downloader `video_fetch` uses; `native` is a reserved slot (see below) |
@@ -286,9 +286,9 @@ user override via `ytdlpBinary` / `ffmpegBinary` still wins.
 - Login cookies are stored **per channel** in `accounts/<channel>.json` (mode
   `0600`, at most 10 accounts) and are **never** included in tool results,
   logs, HTTP responses, or commits. The parent directory is this harness's
-  content-extract directory when the harness names one (`DSH_HOME/content-extract`),
+  content-extractor directory when the harness names one (`DSH_HOME/content-extractor`),
   and the library's own default otherwise; the plugin exports it to the library
-  as `EXTRACT_HOME`, because the library itself is harness-independent and does
+  as `EXTRACTOR_HOME`, because the library itself is harness-independent and does
   not read `DSH_HOME`. `video_fetch` materializes one account's cookies to a `0600` file,
   hands the *path* to the engine, and rotates to the next account when the site
   rejects one. `logout` removes one account; `clear` removes the channel's.
@@ -303,7 +303,7 @@ user override via `ytdlpBinary` / `ffmpegBinary` still wins.
 - `video_fetch` accepts `http(s)` URLs only; `video_compress` accepts absolute
   local paths only. Both binaries are spawned with argv arrays (no shell).
 - `video_fetch` downloads **only inside the session workspace**: `downloadDir`
-  is a workspace-relative subdir (default `dsh-content-extract`), absolute paths and
+  is a workspace-relative subdir (default `dsh-content-extractor`), absolute paths and
   `..` are rejected on write and again at use, and the resolved directory's
   nearest existing ancestor is realpath-checked against the workspace so a
   symlink planted inside it cannot redirect a download out. A call with no
