@@ -35,6 +35,7 @@ fn platforms() -> Vec<std::sync::Arc<dyn extractor_core::Provider>> {
         platform_youku::Youku::new(),
         platform_wmpvp::WmPvp::new(),
         platform_astralparty::AstralParty::new(),
+        platform_xiaohongshu::Xiaohongshu::new(),
         platform_generic::Generic::new(),
     ]
 }

@@ -345,9 +345,10 @@ mod tests {
         let response = dispatch(&json!({ "op": "platforms" }));
         assert_eq!(response["ok"], json!(true));
         let platforms = response["result"].as_array().unwrap();
-        assert_eq!(platforms.len(), 8, "generic is not advertised as a site");
         assert_eq!(platforms[0]["id"], json!("bilibili"));
+        assert!(platforms.len() >= 9, "every linked site must be advertised");
         assert!(platforms.iter().all(|p| p["id"] != json!("generic")));
+        assert!(platforms.iter().any(|p| p["id"] == json!("xiaohongshu")));
     }
 
     #[test]

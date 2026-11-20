@@ -177,6 +177,7 @@ dependencies = [
  "platform-iqiyi",
  "platform-tencent",
  "platform-wmpvp",
+ "platform-xiaohongshu",
  "platform-youku",
  "platform-youtube",
  "reqwest",
@@ -747,6 +748,14 @@ dependencies = [
 
 [[package]]
 name = "platform-wmpvp"
+version = "0.3.0"
+dependencies = [
+ "extractor-core",
+ "serde_json",
+]
+
+[[package]]
+name = "platform-xiaohongshu"
 version = "0.3.0"
 dependencies = [
  "extractor-core",

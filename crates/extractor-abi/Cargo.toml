@@ -31,6 +31,7 @@ platform-youku = { path = "../platform-youku" }
 platform-generic = { path = "../platform-generic" }
 platform-wmpvp = { path = "../platform-wmpvp" }
 platform-astralparty = { path = "../platform-astralparty" }
+platform-xiaohongshu = { path = "../platform-xiaohongshu" }
 
 # Loopback CDP only, so no TLS feature is needed. The socket lives on this side
 # of the boundary because opening one is an effect; the frame and reply shapes

@@ -53,6 +53,7 @@ crates/
   platform-youku/        优酷: cookie login + video
   platform-wmpvp/        完美世界电竞 (news.wmpvp.com): video / image-text post
   platform-astralparty/  吉星派对: public match-replay files
+  platform-xiaohongshu/  小红书: login methods + note/video descriptors
   platform-generic/      any host: cookie import + file / yt-dlp catch-alls
   extractor-abi/           effects + composition root; the C ABI (libextractor.so)
   extractor-cli/           the `cx` binary

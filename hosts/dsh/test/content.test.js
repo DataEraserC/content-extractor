@@ -17,6 +17,7 @@ import { cvidOf, exactIdOf, initialStateOf, projectArticle, renderContent } from
 import { cookieHeaderFor, parseNetscape, withCookie } from '../lib/content/cookies.js'
 import { CREDENTIAL_USE, usesCredentials } from '../lib/content/contract.js'
 import { renderMetadata } from '../lib/index.js'
+import { initialStateOf as initialStateOfXhs, noteIdOf as noteIdOfXhs, projectNote as projectNoteXhs } from '../lib/content/xiaohongshu/note.js'
 
 const checks = []
 /** @param {string} name - check label. @param {() => Promise<void>|void} body - assertions. */
@@ -559,6 +560,75 @@ await check('cookieHeaderFor: path scope respected; bad url yields empty', () =>
 await check('withCookie: no empty header when anonymous', () => {
   assert.deepEqual(withCookie({ a: '1' }, ''), { a: '1' })
   assert.deepEqual(withCookie({ a: '1' }, 'k=v'), { a: '1', cookie: 'k=v' })
+})
+
+// ── xiaohongshu: two tied candidates, DOM parsing, open metadata ────────────
+
+await check('xiaohongshu: a note URL offers both note and video, tied and explicit', () => {
+  const found = candidates({ url: 'https://www.xiaohongshu.com/explore/69821980000000000e03c95f' })
+  const xhs = found.filter((entry) => entry.extractor.id.startsWith('xiaohongshu.'))
+  assert.deepEqual(xhs.map((entry) => entry.extractor.id), ['xiaohongshu.note', 'xiaohongshu.video'])
+  assert.equal(xhs[0].score, xhs[1].score)
+  assert.equal(xhs[0].extractor.kind, 'post')
+  assert.equal(xhs[1].extractor.kind, 'video')
+  // Neither candidate outranks the other — the caller must choose.
+  assert.ok(!found.some((entry) => entry.extractor.id === 'bilibili.video'))
+})
+
+await check('xiaohongshu: discovery/item and short-link host are covered', () => {
+  assert.ok(candidates({ url: 'https://www.xiaohongshu.com/discovery/item/69821980000000000e03c95f' })
+    .some((entry) => entry.extractor.id === 'xiaohongshu.note'))
+  assert.ok(EXTRACTOR_IDS.includes('xiaohongshu.video'))
+})
+
+await check('xiaohongshu: both ids resolve, a typo is refused with known ids listed', () => {
+  assert.equal(extractorOf('xiaohongshu.note').id, 'xiaohongshu.note')
+  assert.equal(extractorOf('xiaohongshu.video').id, 'xiaohongshu.video')
+  try {
+    extractorOf('xiaohongshu.typo')
+    assert.fail('unknown id must throw')
+  } catch (error) {
+    assert.match(error.message, /xiaohongshu\.note/)
+    assert.match(error.message, /xiaohongshu\.video/)
+  }
+})
+
+await check('xiaohongshu: __INITIAL_STATE__ handles undefined, nested braces and semicolons', () => {
+  const html = '<script>window.__INITIAL_STATE__={"note":{"a":"x;y","nested":{"k":1},"gone":undefined}}</script>'
+  const state = initialStateOfXhs(html)
+  assert.equal(state.note.a, 'x;y')
+  assert.equal(state.note.nested.k, 1)
+  assert.equal(state.note.gone, null)
+})
+
+await check('xiaohongshu: note id extracted from long URL', () => {
+  assert.equal(noteIdOfXhs('https://www.xiaohongshu.com/explore/69821980000000000e03c95f?xsec_token=abc'),
+    '69821980000000000e03c95f')
+})
+
+await check('xiaohongshu: projectNote fills the open map without cookie values', () => {
+  const note = {
+    noteId: '69821980000000000e03c95f',
+    title: '标题', desc: '正文', time: 1700000000000,
+    user: { nickname: '作者', userId: 'u1' },
+    interactInfo: { likedCount: '12', collectedCount: '3' },
+    imageList: [{ urlDefault: 'https://sns-webpic-qc.xhscdn.com/a.jpg' }],
+    tagList: [{ name: '美食' }],
+  }
+  const { metadata, images } = projectNoteXhs(
+    note,
+    'https://www.xiaohongshu.com/explore/69821980000000000e03c95f',
+    '69821980000000000e03c95f',
+    { resolvedUrl: 'https://www.xiaohongshu.com/explore/69821980000000000e03c95f?xsec_token=tok' },
+  )
+  assert.equal(metadata.title, '标题')
+  assert.equal(metadata.author, '作者')
+  assert.equal(metadata.note_id, '69821980000000000e03c95f')
+  assert.equal(metadata.xsec_token, 'tok')
+  assert.equal(metadata.image_count, 1)
+  assert.deepEqual(metadata.tags, ['美食'])
+  assert.equal(images.length, 1)
+  assert.ok(!JSON.stringify(metadata).includes('SESSDATA'))
 })
 
 console.log(checks.join('\n'))

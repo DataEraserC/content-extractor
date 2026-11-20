@@ -13,6 +13,7 @@ import { bilibiliArticle, bilibiliOpus } from './bilibili/article.js'
 import { bilibiliVideo } from './bilibili/video.js'
 import { wmpvpNote, wmpvpVideo } from './wmpvp/post.js'
 import { astralReplay } from './astralparty/replay.js'
+import { xiaohongshuNote, xiaohongshuVideo } from './xiaohongshu/note.js'
 import { genericFile } from './generic/file.js'
 import { genericYtdlp } from './generic/ytdlp.js'
 
@@ -29,6 +30,8 @@ const EXTRACTORS = [
   wmpvpVideo,
   wmpvpNote,
   astralReplay,
+  xiaohongshuNote,
+  xiaohongshuVideo,
   genericFile,
   genericYtdlp,
 ]

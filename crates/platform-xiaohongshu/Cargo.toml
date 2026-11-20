@@ -1,0 +1,11 @@
+[package]
+name = "platform-xiaohongshu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "小红书 www.xiaohongshu.com: login methods and note/video content descriptors"
+
+[dependencies]
+extractor-core = { workspace = true }
+serde_json = { workspace = true }

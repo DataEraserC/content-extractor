@@ -82,6 +82,8 @@ Registered extractors (one directory per platform under `lib/content/`):
 | `bilibili.opus` | `bilibili.com/opus/…` | `post` |
 | `wmpvp.video` | `news.wmpvp.com/community-detail.html?id=…` (video post) | `video` |
 | `wmpvp.note` | same URL shape (image/text post) | `post` |
+| `xiaohongshu.note` | `xiaohongshu.com/explore/<24-hex-id>` or `/discovery/item/<id>` (image/text note) | `post` |
+| `xiaohongshu.video` | same URL shape (video note) | `video` |
 | `astralparty.replay` | a 16-digit replay id, or a `sereplaycn/sereplayjp.feimogames.com/prod/<id>` URL | `replay` |
 | `generic.file` | direct file links (by extension or `params.kind='file'`) | `file` |
 | `generic.ytdlp` | any other http(s) page (yt-dlp's 1800-site catalogue) | `video` |
@@ -89,6 +91,21 @@ Registered extractors (one directory per platform under `lib/content/`):
 `wmpvp.video` and `wmpvp.note` deliberately tie on specificity: the URL cannot say
 which one a post is, so both are offered and the caller picks. Choosing wrong is
 an actionable error naming the other id, not a silently empty result.
+`xiaohongshu.note` / `xiaohongshu.video` tie the same way — a note id does not
+say whether the note is image/text or video.
+
+### 小红书 (www.xiaohongshu.com)
+
+Notes are read from the page's server-rendered `window.__INITIAL_STATE__`
+(`note.noteDetailMap`), **not** the signed Web API (`x-s` / `x-s-common` and a
+short-lived `xsec_token` change with the site's front end). Short `xhslink.com`
+links are followed to the canonical URL, which carries the `xsec_token`. Most
+notes need a session: `video_login` on channel `xiaohongshu` supports `manual`
+(cookie import) and `browser`; anonymous reads work only for shared notes whose
+token is still valid. `xiaohongshu.note` writes a `.md` plus downloaded images
+(`params: {"images": false}` skips them); `xiaohongshu.video` delegates the
+bytes to yt-dlp (which owns this site's stream format) and adds the page's
+metadata. `credentials: enhances` — the stored jar is attached and rotated.
 
 Adding a platform (e.g. a Xiaohongshu note getter) is **one directory under
 `lib/content/<platform>/` plus one import and one array entry** in
