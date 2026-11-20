@@ -106,7 +106,43 @@ export function noteIdOf(url) {
 }
 
 /**
- * Follow a share short link to the final note URL, which carries `xsec_token`.
+ * Extract a real note URL from a short-link landing page.
+ *
+ * `xhslink.com` 302s to one of two places depending on the site's risk
+ * control: the note page itself, or a `/404` / login interstitial whose
+ * `redirectPath` query parameter holds the real note URL. Split out as a pure
+ * function so the extraction is testable without network access.
+ * @param {string} finalUrl - the URL the short link redirected to.
+ * @returns {string} a note URL with a 24-hex id, or '' when none is present.
+ */
+export function noteUrlFromRedirect(finalUrl) {
+  let final
+  try {
+    final = new URL(String(finalUrl ?? ''))
+  } catch {
+    return ''
+  }
+  // An interstitial's query can itself contain a 24-hex id (inside the
+  // encoded redirectPath), so check the pathname before matching the id —
+  // otherwise a /404 page looks like a note page and is fed to yt-dlp.
+  const interstitial = /(^|\/)(404|login)(\/|$)/i.test(final.pathname)
+  if (!interstitial && noteIdOf(final.pathname) && /xiaohongshu\.com/i.test(final.host)) {
+    return final.href
+  }
+  const redirectPath = final.searchParams.get('redirectPath') ?? ''
+  if (!redirectPath) return ''
+  let real = redirectPath
+  if (!/^https?:\/\//i.test(real)) real = `https://www.xiaohongshu.com${real.startsWith('/') ? '' : '/'}${real}`
+  if (/(^|\/)(404|login)(\/|$)/i.test(new URL(real).pathname)) return ''
+  return noteIdOf(real) ? real : ''
+}
+
+/**
+ * Follow a share short link to a final note URL that carries `xsec_token`.
+ *
+ * Note: the token here is whatever the short link carried. Anonymous server
+ * reads are still 302'd by the site — resolving the URL does not defeat the
+ * login gate; it only gives yt-dlp a URL it can sign and fetch on its own.
  * @param {string} url - possibly a short link.
  * @param {number} timeoutMs - deadline for the redirect.
  * @returns {Promise<string>} the resolved URL.
@@ -119,11 +155,13 @@ export async function resolveUrl(url, timeoutMs) {
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetch(target, { signal: controller.signal, redirect: 'follow', headers: { 'user-agent': UA } })
-    const resolved = response.url || target
-    if (!/xiaohongshu\.com/.test(resolved)) {
-      throw new Error(`short link did not resolve to a xiaohongshu note page: ${resolved.slice(0, 120)}`)
-    }
-    return resolved
+    const final = response.url || target
+    const noteUrl = noteUrlFromRedirect(final)
+    if (noteUrl) return noteUrl
+    throw new Error(
+      `share short link did not resolve to a note page (landed on ${final.slice(0, 100)}). ` +
+      'Copy the full link with xsec_token from a signed-in browser instead.',
+    )
   } finally {
     clearTimeout(timer)
   }
@@ -156,8 +194,17 @@ export async function fetchHtml(url, timeoutMs, cookiesPath = '') {
       )
     }
     const text = await response.text()
-    if (!text.includes('__INITIAL_STATE__')) {
-      throw new Error(`no __INITIAL_STATE__ in the page for ${url.slice(0, 100)}; the note may be private or the token expired`)
+    // A 302 to /404 or a login interstitial still carries __INITIAL_STATE__
+    // (with only `global`, no noteDetailMap). The site gates anonymous server
+    // reads regardless of token freshness, so say that rather than blaming an
+    // expired token — the note can be perfectly public in a browser.
+    if (!text.includes('__INITIAL_STATE__') || !text.includes('noteDetailMap')) {
+      throw new Error(
+        `no note state in the page for ${url.slice(0, 100)}: the site redirects anonymous server-side ` +
+        'requests to /404 or login, not a token problem. Import a login cookie with ' +
+        '`/content-login xiaohongshu manual` (or the browser method), or use xiaohongshu.video ' +
+        'with a full share URL carrying xsec_token.',
+      )
     }
     return text
   } finally {
@@ -350,33 +397,49 @@ export const xiaohongshuVideo = {
   kind: 'video',
   patterns: ['xiaohongshu.com'],
   credentials: 'enhances',
+  // These are the keys yt-dlp's XiaoHongShu extractor actually returns. The
+  // SSR-only fields (liked/collected/share counts, ip_location) are not here
+  // because this path never reads the page — see the note on extract().
   metadataKeys: [
-    'note_id', 'xsec_token', 'author', 'author_id', 'duration', 'video_url',
-    'thumbnail', 'liked_count', 'collected_count', 'comment_count', 'share_count',
-    'tags', 'created_at',
+    'note_id', 'author_id', 'duration', 'thumbnail', 'description',
+    'video_url', 'upload_date',
   ],
 
   /**
+   * Download a video note.
+   *
+   * Deliberately does NOT read `window.__INITIAL_STATE__` first. That was the
+   * original design, but it is an anonymous server-side fetch: xiaohongshu
+   * 302s those requests to /404, so the page read failed before yt-dlp ever
+   * ran — even when yt-dlp itself would have succeeded on the same URL. The
+   * bytes and their metadata (title, description, author id, duration,
+   * thumbnail) all come from yt-dlp's built-in XiaoHongShu extractor, which
+   * owns URL signing and the cookie jar. Resolve a short link to a real note
+   * URL first only when needed.
+   *
+   * A note may be image/text rather than video; yt-dlp then reports no video
+   * formats, and the error is surfaced verbatim. The caller picked this id,
+   * so the actionable alternative is `xiaohongshu.note`.
+   *
    * @param {{url?: string}} input - extract input.
    * @param {object} opts - extract options.
    * @returns {Promise<object>} ExtractResult with the video and .meta.json.
    */
   async extract(input, opts) {
-    const { id, projected } = await readNote(input, opts)
-    if (!projected.videoUrl) {
-      throw new Error(
-        `this note (${id}) is an IMAGE/TEXT note — use extractor="xiaohongshu.note" instead; ` +
-        'the URL cannot say which kind it is, so both are offered.',
-      )
-    }
-    // yt-dlp owns the download (format selection, merge, cookie jar); this
-    // extractor only adds the xiaohongshu-specific metadata from the page.
-    const result = await genericYtdlp.extract(input, opts)
-    Object.assign(result.metadata, projected.metadata)
+    const original = String(input.url ?? '')
+    const deadline = Date.now() + opts.timeoutMs
+    const url = await resolveUrl(original, Math.min(20000, Math.max(3000, deadline - Date.now())))
+    const result = await genericYtdlp.extract({ ...input, url }, opts)
+
+    // yt-dlp already wrote a metadata sidecar from its own info. Enrich it
+    // with the xiaohongshu-specific keys and make this extractor the source
+    // of record, then rewrite the sidecar so it matches what we return.
+    const id = result.metadata.id ?? noteIdOf(url) ?? noteIdOf(original)
     result.metadata.note_id = id
-    result.metadata.video_url = projected.videoUrl
     result.source.id = id
     result.source.extractor = this.id
+    const token = tokenOf(url) || tokenOf(original)
+    if (token) result.metadata.xsec_token = token
     const metaPath = result.files.find((file) => file.role === 'metadata')?.path
     if (metaPath) {
       await writeFile(metaPath, JSON.stringify({ kind: 'video', source: result.source, metadata: result.metadata }, null, 2), 'utf8')

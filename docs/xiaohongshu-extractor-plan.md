@@ -4,6 +4,14 @@
 > 目标是新增小红书笔记抓取，完全复用现有的「显式选择 + 开放 metadata map + 账户池」契约，
 > 不引入新的抽象层，也不依赖签名算法逆向。
 
+> **实施修正（2026-11-20）**：本文 §3/§5/§7 里 `xiaohongshu.video` 从
+> `__INITIAL_STATE__` 补 metadata 的设计**未落地**。实测发现 SSR 页读是匿名服务端
+> fetch，小红书一律 302 到 /404，视频路径会因此在 yt-dlp 运行前就失败。当前的
+> `xiaohongshu.video` 直接把 URL 交给 yt-dlp 的内置 XiaoHongShu extractor（它自带
+> 签名与 cookie 处理），只用 yt-dlp 的 info JSON 投影 metadata，不读页面；`note` 路径
+> 仍按下文的 SSR 方案解析，但需要登录态。短链解析见 `noteUrlFromRedirect`。下面保留
+> 原设计作为背景记录。
+
 ## 1. 结论先行
 
 小红书抓取**可行且成本低**，因为本项目的三块现成基础设施正好覆盖它的三个难点：

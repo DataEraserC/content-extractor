@@ -17,7 +17,7 @@ import { cvidOf, exactIdOf, initialStateOf, projectArticle, renderContent } from
 import { cookieHeaderFor, parseNetscape, withCookie } from '../lib/content/cookies.js'
 import { CREDENTIAL_USE, usesCredentials } from '../lib/content/contract.js'
 import { renderMetadata } from '../lib/index.js'
-import { initialStateOf as initialStateOfXhs, noteIdOf as noteIdOfXhs, projectNote as projectNoteXhs } from '../lib/content/xiaohongshu/note.js'
+import { initialStateOf as initialStateOfXhs, noteIdOf as noteIdOfXhs, noteUrlFromRedirect, projectNote as projectNoteXhs } from '../lib/content/xiaohongshu/note.js'
 
 const checks = []
 /** @param {string} name - check label. @param {() => Promise<void>|void} body - assertions. */
@@ -629,6 +629,20 @@ await check('xiaohongshu: projectNote fills the open map without cookie values',
   assert.deepEqual(metadata.tags, ['美食'])
   assert.equal(images.length, 1)
   assert.ok(!JSON.stringify(metadata).includes('SESSDATA'))
+})
+
+await check('xiaohongshu: short-link landing pages yield a real note URL', () => {
+  // The note page itself is passed through.
+  const direct = 'https://www.xiaohongshu.com/explore/69821980000000000e03c95f?xsec_token=tok'
+  assert.equal(noteUrlFromRedirect(direct), direct)
+  // A /404 interstitial hides the real URL in an encoded redirectPath.
+  const real = 'https://www.xiaohongshu.com/discovery/item/6a9d0eb2000000002a024480?xsec_token=tok'
+  const interstitial = `https://www.xiaohongshu.com/404?source=x&redirectPath=${encodeURIComponent(real)}`
+  assert.equal(noteUrlFromRedirect(interstitial), real)
+  // A login page with a bogus redirectPath is refused, not fed to yt-dlp.
+  const login = `https://www.xiaohongshu.com/login?redirectPath=${encodeURIComponent('http://www.xiaohongshu.com/explore?exSource=null')}`
+  assert.equal(noteUrlFromRedirect(login), '')
+  assert.equal(noteUrlFromRedirect('not a url'), '')
 })
 
 console.log(checks.join('\n'))

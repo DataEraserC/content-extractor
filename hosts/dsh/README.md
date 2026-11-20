@@ -96,16 +96,24 @@ say whether the note is image/text or video.
 
 ### 小红书 (www.xiaohongshu.com)
 
-Notes are read from the page's server-rendered `window.__INITIAL_STATE__`
-(`note.noteDetailMap`), **not** the signed Web API (`x-s` / `x-s-common` and a
-short-lived `xsec_token` change with the site's front end). Short `xhslink.com`
-links are followed to the canonical URL, which carries the `xsec_token`. Most
-notes need a session: `video_login` on channel `xiaohongshu` supports `manual`
-(cookie import) and `browser`; anonymous reads work only for shared notes whose
-token is still valid. `xiaohongshu.note` writes a `.md` plus downloaded images
-(`params: {"images": false}` skips them); `xiaohongshu.video` delegates the
-bytes to yt-dlp (which owns this site's stream format) and adds the page's
-metadata. `credentials: enhances` — the stored jar is attached and rotated.
+Image/text notes are read from the page's server-rendered
+`window.__INITIAL_STATE__` (`note.noteDetailMap`), **not** the signed Web API
+(`x-s` / `x-s-common` change with the site's front end). **This page read is an
+anonymous server-side fetch, and the site 302s those to /404 regardless of
+token freshness** — so `xiaohongshu.note` needs a login session on channel
+`xiaohongshu` (`video_login` supports `manual` cookie import and `browser`).
+The token is not the problem; the login gate is.
+
+`xiaohongshu.video` does **not** read the page at all: it hands the URL straight
+to yt-dlp's built-in XiaoHongShu extractor, which owns stream signing and can
+download with just a full share URL carrying `xsec_token` (a stored cookie is
+attached when present). Short `xhslink.com` links are resolved to the canonical
+note URL first — the real URL is recovered from the `/404` interstitial's
+`redirectPath` when needed. The video result carries yt-dlp's metadata plus
+`note_id` / `xsec_token`; it does not include SSR-only fields such as like /
+collect / share counts. `credentials: enhances` — the stored jar is attached
+and rotated. `xiaohongshu.note` writes a `.md` plus downloaded images
+(`params: {"images": false}` skips them).
 
 Adding a platform (e.g. a Xiaohongshu note getter) is **one directory under
 `lib/content/<platform>/` plus one import and one array entry** in
